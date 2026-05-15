@@ -10,5 +10,11 @@ export function getPartyKitHost(): string {
       .replace(/^(https?|wss?):\/\//, "")
       .replace(/\/+$/, "");
   }
+  // 프로덕션 빌드 시 Vercel 등에 VITE_PARTYKIT_HOST 가 없으면 여기로 떨어져 브라우저가 로컬 PartyKit 으로 붙으려 함
+  if (import.meta.env.PROD) {
+    console.warn(
+      "[live-notepad] VITE_PARTYKIT_HOST 가 비어 있어 localhost:1999 로 폴백합니다. 호스팅 환경 변수에 PartyKit 호스트를 넣고 다시 빌드·배포하세요.",
+    );
+  }
   return "localhost:1999";
 }

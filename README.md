@@ -111,6 +111,8 @@ npm run dev:party    # PartyKit만
 3. Build: `npm run build` / Output: `dist` / Framework: **Vite** 또는 Other  
 4. env 추가·변경 후 **Redeploy** 필수 (Vite는 빌드 시 env를 번들에 고정)
 
+**배포 후에도 WebSocket이 `localhost:1999` 로 가는 이유:** Vercel 빌드 시점에 `VITE_PARTYKIT_HOST` 가 **비어 있거나** Preview/Development에만 넣고 Production 빌드에는 없으면, 코드가 **`localhost:1999` 로 폴백**합니다. Production에 변수를 넣은 뒤 **반드시 Redeploy** 하세요. (프로덕션에서 폴백 시 브라우저 콘솔에 경고가 찍힙니다.)
+
 [`vercel.json`](vercel.json) — SPA 라우트(`/room/...`)를 `index.html`로 넘깁니다.
 
 ---
@@ -234,7 +236,7 @@ npm run party:tail
 
 | 증상 | 조치 |
 |------|------|
-| 로컬에서 `wss://…partykit.dev` failed | `.env.development` 로 `localhost:1999` 사용, `npm run dev` 재시작 |
+| 프로덕션에서 WS가 `localhost:1999` | Vercel **Production** 에 `VITE_PARTYKIT_HOST` 없음 또는 env 추가 후 **Redeploy 안 함** → 빌드에 폴백이 박힘 |
 | 프로덕션 WS failed | `party:deploy` 완료 → test URL 확인 → Vercel `VITE_PARTYKIT_HOST` + Redeploy |
 | URL에 `//parties` (슬래시 두 개) | 호스트 끝 `/` 제거 후 Redeploy |
 | `No onRequest handler` | `npm run party:deploy` |
