@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import * as Y from "yjs";
 import useYProvider from "y-partykit/react";
 import { CollabEditor } from "../components/CollabEditor";
+import { SyncDebugPanel } from "../components/SyncDebugPanel";
 import { SyncStatusBadge } from "../components/SyncStatusBadge";
 import { getPartyKitHost } from "../lib/partyKitHost";
 import { getSupabaseBrowserClient } from "../lib/supabaseClient";
@@ -126,6 +127,9 @@ function RoomLiveSurface({
   });
 
   const { ready: partyReady, degradedSynced, retrying, gaveUp } = usePartyKitSyncReady(provider);
+  const showDebug =
+    typeof window !== "undefined" &&
+    (import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug"));
 
   useYjsSupabasePersistence(ydoc, slug, title, supabase, Boolean(supabase));
 
@@ -202,6 +206,7 @@ function RoomLiveSurface({
           <p className="collab-editor__loading">에디터 동기화 대기 중…</p>
         )}
       </div>
+      {showDebug && <SyncDebugPanel provider={provider} ydoc={ydoc} room={slug} />}
     </div>
   );
 }
