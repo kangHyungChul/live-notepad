@@ -1,20 +1,19 @@
 /**
- * PartyKit 방(Party) 서버 — Yjs 실시간 동기화.
+ * PartyKit + y-partykit 서버.
  *
- * 배포(Cloudflare Durable Objects) vs 로컬 `partykit dev` 차이:
- * - 모듈 Worker 에 `onMessage` 가 없으면 PartyKit 이 `invokeOnMessage` 호출 시 예외가 나고
- *   프로덕션에서 WebSocket 이 끊길 수 있습니다.
- * - 모듈 Worker 에 빈 `onMessage` 만 넣으면 hibernation 모드가 켜져 Yjs 가 막힙니다.
- *
- * → Class Worker + `options.hibernate: false` + noop `onMessage` 가
- *   프로덕션·로컬 모두에서 y-partykit 리스너와 공존하는 패턴입니다.
+ * 로컬 partykit dev: onConnect 리스너만으로도 동기화됨.
+ * Cloudflare 배포: 메시지가 worker.onMessage 로만 오는 경우가 있어
+ * routeYjsMessage 로 Yjs 프로토콜을 직접 처리합니다.
  */
 import type * as Party from "partykit/server";
 import { onConnect as yPartyKitOnConnect } from "y-partykit";
+import { routeYjsMessage } from "./routeYjsMessage";
+
+const Y_OPTS = { persist: false, gc: true } as const;
 
 export default class LiveNotepadParty implements Party.Server {
-  /** hibernation 을 끄면 메시지가 addEventListener + y-partykit 경로로 갑니다 */
-  readonly options = { hibernate: false };
+  /** true → 배포 환경에서 webSocketMessage → onMessage 경로 사용 */
+  readonly options = { hibernate: true };
 
   constructor(readonly room: Party.Room) {}
 
@@ -23,45 +22,43 @@ export default class LiveNotepadParty implements Party.Server {
     console.log(
       JSON.stringify({
         sessionId: "7f8eb8",
-        hypothesisId: "F",
+        hypothesisId: "H",
         location: "party/index.ts:onConnect",
-        message: "class worker onConnect",
-        data: { roomId: this.room.id, connId: conn.id, hibernate: false },
+        message: "onConnect",
+        data: { roomId: this.room.id, connId: conn.id },
         timestamp: Date.now(),
       }),
     );
     // #endregion
-    await yPartyKitOnConnect(conn, this.room, {
-      persist: false,
-      gc: true,
-    });
+    await yPartyKitOnConnect(conn, this.room, Y_OPTS);
   }
 
-  /**
-   * PartyKit ClassWorker 가 attachSocketEventHandlers 에서 매 메시지마다 호출합니다.
-   * Yjs 바이너리는 y-partykit 이 onConnect 에 등록한 리스너가 처리합니다.
-   */
-  onMessage(_message: string | ArrayBuffer | ArrayBufferView) {
+  async onMessage(
+    message: string | ArrayBuffer | ArrayBufferView,
+    conn: Party.Connection,
+  ) {
     // #region agent log
     console.log(
       JSON.stringify({
         sessionId: "7f8eb8",
-        hypothesisId: "F",
+        hypothesisId: "H",
         location: "party/index.ts:onMessage",
-        message: "noop onMessage invoked",
+        message: "routeYjsMessage",
         data: {
-          type: typeof _message,
+          roomId: this.room.id,
+          type: typeof message,
           byteLength:
-            _message instanceof ArrayBuffer
-              ? _message.byteLength
-              : typeof _message === "string"
-                ? _message.length
-                : 0,
+            typeof message === "string"
+              ? message.length
+              : message instanceof ArrayBuffer
+                ? message.byteLength
+                : message.byteLength,
         },
         timestamp: Date.now(),
       }),
     );
     // #endregion
+    await routeYjsMessage(this.room, conn, message, Y_OPTS);
   }
 
   onRequest() {

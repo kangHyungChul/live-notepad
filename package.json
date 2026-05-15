@@ -15,7 +15,8 @@
     "db:push": "supabase db push",
     "party:list": "partykit list",
     "party:deploy": "partykit deploy",
-    "party:tail": "partykit tail"
+    "party:tail": "partykit tail",
+    "party:diagnose": "node scripts/diagnose-partykit.mjs live-notepad-party.kangHyungChul.partykit.dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
