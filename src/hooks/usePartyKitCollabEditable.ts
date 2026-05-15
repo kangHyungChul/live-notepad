@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Doc } from "yjs";
 import type YPartyKitProvider from "y-partykit/provider";
+import { agentDebugLog } from "../lib/agentDebugLog";
 
 export type UsePartyKitSyncReadyOptions = {
   /** 연결은 됐는데 `synced` 가 오래 false 일 때 재연결을 시도하기까지 대기(ms) */
@@ -37,9 +38,28 @@ export function usePartyKitSyncReady(
   const [retrying, setRetrying] = useState(false);
   const [gaveUp, setGaveUp] = useState(false);
   const reconnectCountRef = useRef(0);
+  const lastLoggedRef = useRef("");
 
   useEffect(() => {
     const bump = () => {
+      const awarenessSize = provider.awareness.getStates().size;
+      const snapshot = `${provider.synced}|${provider.wsconnected}|${awarenessSize}`;
+      if (snapshot !== lastLoggedRef.current) {
+        lastLoggedRef.current = snapshot;
+        // #region agent log
+        agentDebugLog(
+          "usePartyKitCollabEditable.ts:bump",
+          "provider state",
+          {
+            synced: provider.synced,
+            wsconnected: provider.wsconnected,
+            awarenessSize,
+            url: typeof provider.url === "string" ? provider.url : "",
+          },
+          "B",
+        );
+        // #endregion
+      }
       if (provider.synced) {
         setSynced(true);
         setLive(true);
@@ -47,8 +67,7 @@ export function usePartyKitSyncReady(
         setGaveUp(false);
         reconnectCountRef.current = 0;
       }
-      // awareness 가 2 이상이면 다른 클라이언트와 채널이 살아 있는 것
-      if (provider.awareness.getStates().size > 1) {
+      if (awarenessSize > 1) {
         setLive(true);
       }
     };
@@ -69,8 +88,21 @@ export function usePartyKitSyncReady(
   useEffect(() => {
     const doc = options.ydoc;
     if (!doc) return;
-    const onUpdate = (_update: Uint8Array, origin: unknown) => {
-      if (origin === provider) setLive(true);
+    const onUpdate = (update: Uint8Array, origin: unknown) => {
+      const fromProvider = origin === provider;
+      // #region agent log
+      agentDebugLog(
+        "usePartyKitCollabEditable.ts:ydoc-update",
+        "ydoc update",
+        {
+          byteLength: update.byteLength,
+          fromProvider,
+          originType: origin === null ? "null" : typeof origin,
+        },
+        fromProvider ? "C" : "E",
+      );
+      // #endregion
+      if (fromProvider) setLive(true);
     };
     doc.on("update", onUpdate);
     return () => {
