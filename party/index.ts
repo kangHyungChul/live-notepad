@@ -12,6 +12,14 @@ import { onConnect } from "y-partykit";
 export default class YjsPartyServer implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
+  /** 브라우저에서 `https://호스트/parties/main/아무slug` 로 PartyKit 배포·DNS 확인용 */
+  onRequest() {
+    return new Response(`live-notepad party ok (room: ${this.room.id})`, {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+
   onConnect(conn: Party.Connection) {
     // room.id: URL의 방 식별자(프론트의 `slug`와 동일하게 사용)
     return onConnect(conn, this.room, {
