@@ -1,0 +1,228 @@
+:root {
+  --bg: #0f1115;
+  --surface: #171a21;
+  --border: #2a3040;
+  --text: #e6e9ef;
+  --muted: #9aa3b2;
+  --accent: #6c9ef8;
+  --danger: #f87171;
+  --warn: #fbbf24;
+  --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+  font-family: var(--sans);
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.page-header h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.75rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-top: 1rem;
+}
+
+.card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #222733;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #0b1020;
+  font-weight: 600;
+}
+
+.btn.ghost {
+  background: transparent;
+  text-decoration: none;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0f1218;
+  color: var(--text);
+  font: inherit;
+}
+
+.join-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.banner {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.banner.error {
+  border-color: var(--danger);
+  color: #fecaca;
+}
+
+.banner.warn {
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fde68a;
+}
+
+.page-footer {
+  margin-top: 2rem;
+}
+
+.room-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.room-toolbar__left,
+.room-toolbar__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title-input {
+  min-width: 12rem;
+  max-width: 24rem;
+}
+
+.sync-badge {
+  font-size: 0.8rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+}
+
+.editor-shell {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  min-height: 50vh;
+}
+
+.collab-editor__loading {
+  padding: 1rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Tiptap / ProseMirror 기본 타이포 */
+.collab-editor__surface {
+  min-height: 48vh;
+  padding: 1rem 1.25rem;
+  outline: none;
+}
+
+.collab-editor__surface p {
+  margin: 0.35rem 0;
+}
+
+.collab-editor__surface ul,
+.collab-editor__surface ol {
+  padding-left: 1.25rem;
+}
+
+/* CollaborationCaret 기본 스타일(확장이 DOM을 조립하는 방식에 맞춤) */
+.collaboration-carets__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+  word-break: normal;
+  border-left: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+}
+
+.collaboration-carets__label {
+  position: absolute;
+  top: -1.4rem;
+  left: -1px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+  white-space: nowrap;
+  color: #fff;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px 4px 4px 0;
+}
+
+.collaboration-carets__selection {
+  margin-left: -1px;
+  margin-right: -1px;
+  pointer-events: none;
+}

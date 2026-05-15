@@ -1,0 +1,46 @@
+{
+  "name": "live-notepad",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n vite,party -c blue,magenta \"vite\" \"partykit dev -p 1999\"",
+    "dev:vite": "vite",
+    "dev:party": "partykit dev -p 1999",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.4",
+    "@tiptap/extension-collaboration": "^3.23.4",
+    "@tiptap/extension-collaboration-caret": "^3.23.4",
+    "@tiptap/pm": "^3.23.4",
+    "@tiptap/react": "^3.23.4",
+    "@tiptap/starter-kit": "^3.23.4",
+    "@tiptap/y-tiptap": "^3.0.3",
+    "partykit": "^0.0.115",
+    "partysocket": "1.1.19",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.15.1",
+    "y-partykit": "^0.0.33",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.30"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12"
+  }
+}
