@@ -16,6 +16,12 @@
 8. [문제 해결](#8-문제-해결)
 9. [스택 요약](#9-스택-요약)
 
+**배포 하위 절**
+
+- [7.1 `VITE_PARTYKIT_HOST` 프로덕션 값](#71-vite_partykit_host-프로덕션-값--어디서-알-수-있나)
+- [7.2 Vercel 500 · MIDDLEWARE_INVOCATION_FAILED](#72-vercel-500--middleware_invocation_failed)
+- [7.3 PartyKit 배포·로그인·`tail` (프로덕션 실시간 필수)](#73-partykit-배포로그인tail-프로덕션-실시간-필수)
+
 ---
 
 ## 1. 사전 요구 사항
@@ -221,7 +227,7 @@ Vite는 **`npm run build` 할 때** `VITE_` 로 시작하는 값을 클라이언
 |------|---------------------|
 | `VITE_SUPABASE_URL` | Supabase **Project URL** (`https://….supabase.co`, `/rest/v1/` 없음) |
 | `VITE_SUPABASE_ANON_KEY` | Supabase **anon public** 키 |
-| `VITE_PARTYKIT_HOST` | **배포된 PartyKit**의 호스트만 (`https`/`wss` 없이). 로컬용 `localhost:1999` 는 **프로덕션에서 동작하지 않음** — `partykit deploy` 후 안내되는 호스트로 교체 |
+| `VITE_PARTYKIT_HOST` | **배포된 PartyKit** 호스트만 (`https`/`wss`/ **끝 `/` 없음**). `npx partykit list` 의 **url**에서 호스트만 복사. `localhost:1999` 는 프로덕션에서 동작 안 함 |
 
 **Vercel에서 넣는 위치**: 프로젝트 → **Settings** → **Environment Variables** → 이름·값 입력 후 **Production** (필요하면 Preview/Development도)에 체크 → 저장 → **Redeploy**.
 
@@ -249,6 +255,17 @@ Vite는 **`npm run build` 할 때** `VITE_` 로 시작하는 값을 클라이언
 2. **터미널 출력**  
    `npx partykit deploy` 가 끝날 때 **배포 URL 또는 호스트**를 안내하는 줄이 있는 경우가 많습니다. 그중 **호스트 부분만** 복사하면 됩니다.
 
+   배포가 이미 되어 있으면:
+
+   ```powershell
+   npx partykit list
+   ```
+
+   표의 **url** 열에서 `https://` 를 뺀 호스트만 사용합니다.  
+   예: `https://live-notepad-party.kangHyungChul.partykit.dev` →  
+   `live-notepad-party.kangHyungChul.partykit.dev`  
+   **끝에 `/` 를 붙이지 마세요.** (`…dev/` 이면 WebSocket이 `//parties/main/...` 로 잘못 붙어 실패할 수 있습니다.)
+
 3. **PartyKit 쪽 UI**  
    [PartyKit 대시보드](https://www.partykit.io/) / 계정·프로젝트 화면에서 배포된 프로젝트 URL을 확인할 수 있습니다(제품 UI는 변경될 수 있음).
 
@@ -263,7 +280,113 @@ Vite는 **`npm run build` 할 때** `VITE_` 로 시작하는 값을 클라이언
 2. 저장소 **루트에 `middleware.ts` / `src/middleware.ts`** 가 다른 브랜치·템플릿에서 들어오지 않았는지 확인합니다.  
 3. **프로젝트가 Next.js로 잘못 인식**되면 미들웨어 관련 동작이 꼬일 수 있습니다. **Settings → General → Framework Preset** 을 **Vite** 또는 **Other** 로 두고, Build Command `npm run build`, Output `dist` 를 명시합니다.  
 4. **Root Directory** 가 모노레포 하위로 잘못 잡혀 있으면 다른 앱의 미들웨어가 실행될 수 있습니다.  
-5. **Vercel 외 URL** (PartyKit·Supabase REST)에서 같은 문구가 나오면 다른 서비스이므로, **주소 표시줄의 도메인**이 `*.vercel.app` 인지 먼저 구분합니다.
+5. **Vercel 외 URL** (PartyKit·Supabase REST)에서 같은 문구가 나오면 다른 서비스이므로, **주소 표시줄의 도메인**이 `*.vercel.app` 인지 먼저 구분합니다.  
+   → PartyKit CLI(`deploy` / `tail`) 문제와 **혼동하지 마세요.** [7.3절](#73-partykit-배포로그인tail-프로덕션-실시간-필수) 참고.
+
+### 7.3 PartyKit 배포·로그인·`tail` (프로덕션 실시간 필수)
+
+프로덕션 구조는 **두 군데**로 나뉩니다.
+
+| 역할 | 어디에 올리나 | 무엇을 하나 |
+|------|----------------|-------------|
+| **프론트 (Vite)** | Vercel | `npm run build` → 정적 파일. Git push 시 자동 배포 가능 |
+| **실시간 (WebSocket)** | PartyKit | **로컬 PC 터미널**에서 `npx partykit deploy` 로 별도 배포 |
+
+Vercel에 `VITE_PARTYKIT_HOST`만 넣고 **PartyKit `deploy`를 끝내지 않으면**, 브라우저 WebSocket이 실패합니다 (`wss://….partykit.dev/... failed`).
+
+#### 어디서 명령을 입력하나
+
+**본인 PC의 터미널** — 프로젝트 루트 (`package.json` 이 있는 `live-notepad` 폴더).
+
+| 위치 | `partykit deploy` / `partykit tail` |
+|------|-------------------------------------|
+| Cursor / VS Code **터미널** | ✅ |
+| Windows **PowerShell** / cmd | ✅ |
+| **Vercel** 대시보드 | ❌ |
+| Chrome **F12 Console** | ❌ |
+
+`npm run dev` 가 돌아가는 터미널과 **별도 탭**을 열어 실행하는 것을 권장합니다.
+
+#### ① PartyKit 로그인 (최초 1회)
+
+```powershell
+cd c:\workspace\live-notepad
+npx partykit login -p github
+```
+
+- 브라우저가 열리면 **GitHub 권한 허용**까지 완료합니다.  
+- 터미널에 `Attempting to login...` 만 보이면 **1~2분 기다립니다.** 성공 메시지가 나올 때까지 **Ctrl+C로 끊지 마세요.**
+
+로그인 브라우저가 실패하면 (Supabase와 비슷하게) **토큰 방식**:
+
+```powershell
+npx partykit token generate
+```
+
+안내에 따라 토큰을 받은 뒤, **같은 PowerShell 세션**에서:
+
+```powershell
+$env:PARTYKIT_TOKEN = "발급받은_토큰"
+npx partykit whoami
+```
+
+`whoami` 에 본인 GitHub 아이디가 나오면 로그인된 상태입니다.
+
+#### ② PartyKit 배포
+
+```powershell
+cd c:\workspace\live-notepad
+npx partykit deploy
+```
+
+- **성공**하면 호스트가 안내됩니다. [7.1절](#71-vite_partykit_host-프로덕션-값--어디서-알-수-있나) 규칙대로면  
+  `live-notepad-party.{GitHub아이디}.partykit.dev` 형태입니다.  
+- `Attempting to login...` 에서 멈추면 → **① 로그인**이 안 된 것입니다.  
+- 배포 직후 DNS 반영에 **1~2분** 걸릴 수 있습니다.
+
+#### ③ Vercel 환경 변수 + 재배포
+
+1. Vercel → **Settings → Environment Variables**  
+2. `VITE_PARTYKIT_HOST` = ②에서 확인한 호스트 (**프로토콜 없이**, `localhost:1999` 아님)  
+3. **Production** 체크 → 저장 → **Deployments → Redeploy**
+
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` 도 같이 들어가 있는지 확인합니다.
+
+#### ④ 프로덕션 로그 보기 (`partykit tail`)
+
+```powershell
+cd c:\workspace\live-notepad
+npx partykit tail
+```
+
+- 이 터미널은 **켜 둔 채**  
+- 브라우저에서 **배포된 Vercel URL** 로 방에 들어가거나 새로고침  
+- PartyKit 서버에 요청이 오면 **이 터미널**에 로그가 찍힙니다.
+
+`tail` 도 `deploy` 와 같이 **로그인이 필요**합니다. `Attempting to login...` 에서 멈추면 ①을 먼저 완료하세요.
+
+#### ⑤ 브라우저에서 실시간 연결 확인 (Vercel 로그 대신)
+
+Vercel은 **정적 SPA**라서, 실시간 동기화 실패 원인은 **Vercel Runtime Logs에 거의 안 남습니다.**
+
+배포된 사이트에서 **F12 → Network → WS (WebSocket)**:
+
+| WS 요청 대상 | 의미 |
+|--------------|------|
+| `wss://live-notepad-party.*.partykit.dev/...` | 정상 방향 (PartyKit으로 연결 시도) |
+| `ws://localhost:1999/...` | `VITE_PARTYKIT_HOST` 가 빌드에 안 들어감 → Vercel env + **Redeploy** |
+| WS가 **failed** | PartyKit **미배포**·로그인 미완료·호스트 오타·**호스트 끝 `/`** → URL에 `//parties` 가 보이면 env에서 슬래시 제거 후 Vercel **Redeploy** |
+
+**Vercel Build Logs** 에서는 빌드 성공 여부만 보면 됩니다 (`✓ built`, `Deployment completed`). env 값 자체는 로그에 안 찍히는 것이 정상입니다.
+
+#### 자주 겪는 혼동
+
+| 증상 | 실제 의미 |
+|------|-----------|
+| `npx partykit deploy` / `tail` 이 `Attempting to login...` 에서 멈춤 | 로그인 미완료. **Ctrl+C 하지 말고** ① 완료 |
+| WebSocket `wss://….partykit.dev` **failed** | ② `deploy` 가 끝나지 않았거나, 호스트·계정 불일치 |
+| `MIDDLEWARE_INVOCATION_FAILED` (Vercel 형식) | **Vercel 사이트** (`*.vercel.app`) 문제. PartyKit `tail` 출력이 아님 → [7.2절](#72-vercel-500--middleware_invocation_failed) |
+| Vercel 빌드 `500 kB` chunk 경고 | **경고**일 뿐, 배포 실패 아님 |
 
 ---
 
@@ -271,16 +394,17 @@ Vite는 **`npm run build` 할 때** `VITE_` 로 시작하는 값을 클라이언
 
 | 증상 | 확인 |
 |------|------|
-| **실시간만 안 됨** | `npm run dev` 로 PartyKit이 떠 있는지, `.env`의 `VITE_PARTYKIT_HOST`가 `localhost:1999` 인지 |
+| **프로덕션 실시간 안 됨** | [7.3절](#73-partykit-배포로그인tail-프로덕션-실시간-필수) — `partykit deploy` 완료 여부, Vercel `VITE_PARTYKIT_HOST` + Redeploy, F12 → Network → WS |
+| **WebSocket `partykit.dev` failed** | `npx partykit deploy` 가 로그인 없이 중단되지 않았는지, `whoami` / `list` 로 배포 확인 |
+| **실시간만 안 됨 (로컬)** | `npm run dev` 로 PartyKit이 떠 있는지, `.env`의 `VITE_PARTYKIT_HOST`가 `localhost:1999` 인지 |
 | **저장·새 방 생성 안 됨** | `.env`에 Supabase URL/anon 키가 맞는지, `npm run db:push` 또는 수동 `001` 실행 여부, 브라우저 네트워크 탭 401/403 |
 | **`db push` 충돌** | 이미 대시보드에서 같은 객체를 만들었는지. 필요 시 새 프로젝트에만 CLI 적용, 또는 [migration repair](https://supabase.com/docs/reference/cli/supabase-migration-repair) |
 | **5173은 열리는데 연결 끊김** | 방화벽/프록시에서 `ws://localhost:1999` 차단 여부 |
 | **RLS 오류** | `001` 정책이 적용됐는지, 테이블명이 `public.rooms` 인지 |
 | **Vercel `MIDDLEWARE_INVOCATION_FAILED`** | [7.2절](#72-vercel-500--middleware_invocation_failed) — 미들웨어/프리셋/Root Directory·런타임 로그 확인 |
+| **PartyKit CLI 로그인 실패** | `npx partykit login -p github` 또는 `npx partykit token generate` → [7.3절 ①](#73-partykit-배포로그인tail-프로덕션-실시간-필수) |
 
----
-
-브라우저로 여는 기본 `supabase login` 흐름이 **회사망·VPN·방화벽·프록시** 등에서 막히는 경우가 있습니다. 아래 **액세스 토큰 방식**이 가장 안정적입니다.
+### Supabase CLI 로그인 실패 시 (`Unknown error` 등)
 
 1. 브라우저에서 [Supabase 대시보드 → Account → Access Tokens](https://supabase.com/dashboard/account/tokens) 로 이동합니다.  
 2. **Generate new token** 으로 Personal Access Token을 만듭니다 (이름은 예: `cli-laptop`).  
@@ -308,6 +432,7 @@ Vite는 **`npm run build` 할 때** `VITE_` 로 시작하는 값을 클라이언
    npm update supabase
    ```
 
+---
 
 ## 9. 스택 요약
 

@@ -12,7 +12,10 @@
     "preview": "vite preview",
     "db:login": "supabase login",
     "db:link": "supabase link",
-    "db:push": "supabase db push"
+    "db:push": "supabase db push",
+    "party:list": "partykit list",
+    "party:deploy": "partykit deploy",
+    "party:tail": "partykit tail"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
