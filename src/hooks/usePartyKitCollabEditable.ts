@@ -1,68 +1,84 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type YPartyKitProvider from "y-partykit/provider";
 
-export type UsePartyKitCollabEditableOptions = {
-  /**
-   * 이 시간(밀리초)이 지나도 `provider.synced` 가 false 이면 편집을 강제로 허용합니다.
-   * 웹소켓이 막힌 환경에서 영원히 빈 화면만 보이는 것을 막기 위함입니다.
-   * 이 경우 다른 기기와 문서가 갈라질 수 있어 `unlockWarning` 로 안내합니다.
-   */
-  unlockAfterMs?: number;
+export type UsePartyKitSyncReadyOptions = {
+  /** 연결은 됐는데 `synced` 가 오래 false 일 때 재연결을 시도하기까지 대기(ms) */
+  reconnectAfterMs?: number;
+  /** 이 시간까지 동기화가 안 되면 `gaveUp` 으로 실패 UI 표시(ms) */
+  gaveUpAfterMs?: number;
 };
 
 /**
- * PartyKit(y-partykit) 과 Y.Doc / Tiptap 가 첫 랑데뷰(sync)를 마친 뒤에만 편집을 열기 위한 훅입니다.
+ * PartyKit(y-partykit) 첫 Yjs 동기화(`provider.synced`) 완료를 기다립니다.
  *
- * 배경:
- * - 우리는 Supabase 스냅샷을 클라이언트 Y.Doc 에 먼저 `applyUpdate` 하고, 그 다음 WebSocket 으로 서버와 맞춥니다.
- * - 이 사이(또는 sync 직전)에 사용자가 키 입력을 하면 y-prosemirror 쪽에서 알려진 레이스가 나기 쉽고,
- *   기기마다 ProseMirror 표현이 달라져 "같은 방인데 내용이 다름" 처럼 보일 수 있습니다.
- * - y-partykit 프로바이더는 `synced === true` 일 때 Yjs 스텝 2 동기화가 끝난 상태입니다.
+ * Tiptap(y-prosemirror)을 sync 전에 붙이면 XmlFragment 가 먼저 초기화되어
+ * WebSocket 핸드셰이크가 끝나지 않고 "연결됨 · 동기화 중" 에 머무는 경우가 있습니다.
+ * → 에디터는 `synced === true` 일 때만 마운트하는 것이 안전합니다.
  */
-export function usePartyKitCollabEditable(
+export function usePartyKitSyncReady(
   provider: YPartyKitProvider,
-  options: UsePartyKitCollabEditableOptions = {},
+  options: UsePartyKitSyncReadyOptions = {},
 ): {
-  /** Tiptap `setEditable` 에 넘길 값 */
-  editable: boolean;
-  /** 아직 첫 sync 를 기다리며 편집이 잠긴 상태인지 */
-  waitingForInitialSync: boolean;
-  /** 타임아웃으로 잠금을 풀었는지 — 다른 기기와 불일치 가능성을 사용자에게 알릴 때 사용 */
-  unlockedByTimeout: boolean;
+  /** Yjs sync step 2 완료 — 이제 CollabEditor 를 마운트해도 됨 */
+  synced: boolean;
+  /** 자동 재연결 시도 중 */
+  retrying: boolean;
+  /** 긴 대기 후에도 synced 가 false — 새로고침 안내용 */
+  gaveUp: boolean;
 } {
-  const unlockAfterMs = options.unlockAfterMs ?? 12_000;
+  const reconnectAfterMs = options.reconnectAfterMs ?? 5_000;
+  const gaveUpAfterMs = options.gaveUpAfterMs ?? 25_000;
 
   const [synced, setSynced] = useState(() => provider.synced);
-  const [unlockedByTimeout, setUnlockedByTimeout] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [gaveUp, setGaveUp] = useState(false);
+  const reconnectCountRef = useRef(0);
 
-  // sync / status 가 바뀔 때마다 로컬 상태를 맞춥니다.
+  // 프로바이더 이벤트 + 폴링으로 `synced` 를 반영합니다(이벤트 누락 대비).
   useEffect(() => {
     const bump = () => {
-      const s = provider.synced;
-      setSynced(s);
-      // 동기화에 다시 성공하면 타임아웃으로 허용했던 편집 경고 상태를 초기화합니다.
-      if (s) setUnlockedByTimeout(false);
+      if (provider.synced) {
+        setSynced(true);
+        setRetrying(false);
+        setGaveUp(false);
+        reconnectCountRef.current = 0;
+      }
     };
     bump();
     provider.on("sync", bump);
+    provider.on("synced", bump);
     provider.on("status", bump);
+    const poll = window.setInterval(bump, 400);
     return () => {
       provider.off("sync", bump);
+      provider.off("synced", bump);
       provider.off("status", bump);
+      window.clearInterval(poll);
     };
   }, [provider]);
 
-  // 연결이 영원히 안 되는 경우 에디터가 완전히 막히지 않도록 상한을 둡니다.
+  // 연결됐는데 오래 synced 가 false 이면 한 번 재연결(최대 2회).
   useEffect(() => {
     if (synced) return;
     const id = window.setTimeout(() => {
-      setUnlockedByTimeout(true);
-    }, unlockAfterMs);
+      if (provider.synced || !provider.wsconnected) return;
+      if (reconnectCountRef.current >= 2) return;
+      reconnectCountRef.current += 1;
+      setRetrying(true);
+      provider.disconnect();
+      provider.connect();
+    }, reconnectAfterMs);
     return () => window.clearTimeout(id);
-  }, [synced, unlockAfterMs]);
+  }, [provider, synced, reconnectAfterMs]);
 
-  const editable = synced || unlockedByTimeout;
-  const waitingForInitialSync = !synced && !unlockedByTimeout;
+  useEffect(() => {
+    if (synced) return;
+    const id = window.setTimeout(() => setGaveUp(true), gaveUpAfterMs);
+    return () => window.clearTimeout(id);
+  }, [synced, gaveUpAfterMs]);
 
-  return { editable, waitingForInitialSync, unlockedByTimeout };
+  return { synced, retrying, gaveUp };
 }
+
+/** @deprecated `usePartyKitSyncReady` 사용 권장 */
+export const usePartyKitCollabEditable = usePartyKitSyncReady;

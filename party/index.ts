@@ -20,9 +20,10 @@ export default class YjsPartyServer implements Party.Server {
     });
   }
 
-  onConnect(conn: Party.Connection) {
+  async onConnect(conn: Party.Connection) {
     // room.id: URL의 방 식별자(프론트의 `slug`와 동일하게 사용)
-    return onConnect(conn, this.room, {
+    // persist 로 스토리지에서 Y.Doc 을 복원할 때까지 기다린 뒤 sync step 1 을 보냅니다.
+    await onConnect(conn, this.room, {
       // PartyKit 호스팅 측 스냅샷(개발/소규모 협업용). DB 영속화와는 별개 레이어입니다.
       persist: { mode: "snapshot" },
       // persist 사용 시 Yjs GC는 끄는 것이 y-partykit 요구사항입니다. (둘 다 켜면 연결 오류)

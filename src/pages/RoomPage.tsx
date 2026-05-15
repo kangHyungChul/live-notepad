@@ -10,7 +10,7 @@ import {
   applyStoredSnapshotToDoc,
   fetchRoomBySlug,
 } from "../lib/roomsRepo";
-import { usePartyKitCollabEditable } from "../hooks/usePartyKitCollabEditable";
+import { usePartyKitSyncReady } from "../hooks/usePartyKitCollabEditable";
 import { useYjsSupabasePersistence } from "../hooks/useYjsSupabasePersistence";
 import { randomGuestColor, randomGuestLabel } from "../lib/randomGuest";
 
@@ -121,10 +121,11 @@ function RoomLiveSurface({
     host,
     room: slug,
     doc: ydoc,
+    // 주기적으로 sync step 1 을 다시 보내 "동기화 중" 에서 멈추는 경우를 줄입니다.
+    options: { resyncInterval: 3_000 },
   });
 
-  const { editable: collabEditable, waitingForInitialSync, unlockedByTimeout } =
-    usePartyKitCollabEditable(provider);
+  const { synced: partySynced, retrying, gaveUp } = usePartyKitSyncReady(provider);
 
   useYjsSupabasePersistence(ydoc, slug, title, supabase, Boolean(supabase));
 
@@ -169,28 +170,32 @@ function RoomLiveSurface({
           Supabase 미설정 — 스냅샷 저장이 비활성화되었습니다.
         </p>
       )}
-      {waitingForInitialSync && (
+      {!partySynced && (
         <p className="banner warn">
-          PartyKit 과 첫 동기화를 마칠 때까지 입력이 잠깁니다. 잠시만 기다려 주세요…
+          PartyKit 과 문서를 맞추는 중입니다
+          {retrying ? " (재연결 시도)" : ""}… 완료되면 에디터가 열립니다.
         </p>
       )}
-      {unlockedByTimeout && !provider.synced && (
+      {gaveUp && !partySynced && (
         <p className="banner error">
-          PartyKit 동기화가 지연되고 있습니다. 아래 에디터를 열었지만 다른 PC 와 내용이 어긋날 수
-          있습니다. 방화벽·호스트 설정·네트워크를 확인하고 새로고침 해 보세요.
+          동기화가 끝나지 않았습니다. PartyKit 배포·호스트 설정을 확인한 뒤 페이지를 새로고침 해
+          주세요.
         </p>
       )}
       <p className="muted small">
         이 브라우저 표시 이름: <strong>{guestName}</strong> (다른 탭은 다른 이름)
       </p>
       <div className="editor-shell">
-        <CollabEditor
-          ydoc={ydoc}
-          provider={provider}
-          editable={collabEditable}
-          localUserName={guestName}
-          localUserColor={guestColor}
-        />
+        {partySynced ? (
+          <CollabEditor
+            ydoc={ydoc}
+            provider={provider}
+            localUserName={guestName}
+            localUserColor={guestColor}
+          />
+        ) : (
+          <p className="collab-editor__loading">에디터 동기화 대기 중…</p>
+        )}
       </div>
     </div>
   );

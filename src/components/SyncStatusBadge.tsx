@@ -15,9 +15,11 @@ export function SyncStatusBadge({ provider }: Props) {
     const onStatus = () => force();
     provider.on("status", onStatus);
     provider.on("sync", onStatus);
+    provider.on("synced", onStatus);
     return () => {
       provider.off("status", onStatus);
       provider.off("sync", onStatus);
+      provider.off("synced", onStatus);
     };
   }, [provider]);
 
