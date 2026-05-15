@@ -1,12 +1,18 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { RoomListSection } from "../components/RoomListSection";
 import { getSupabaseBrowserClient } from "../lib/supabaseClient";
 import { generateRoomSlug } from "../lib/roomSlug";
-import { insertRoom } from "../lib/roomsRepo";
+import {
+  deleteRoomBySlug,
+  insertRoom,
+  listRooms,
+  type RoomListItem,
+} from "../lib/roomsRepo";
 
 /**
- * 랜딩: 새 방 만들기 / 코드로 입장.
- * Supabase가 없으면 새 방 생성만 막고, 코드로 입장(PartyKit만)은 허용합니다.
+ * 랜딩: 방 목록·새 방 만들기·코드로 입장.
+ * Supabase가 없으면 새 방 생성·목록·삭제는 막고, 코드로 입장(PartyKit만)은 허용합니다.
  */
 export function HomePage() {
   const navigate = useNavigate();
@@ -14,6 +20,45 @@ export function HomePage() {
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const [rooms, setRooms] = useState<RoomListItem[]>([]);
+  const [listLoading, setListLoading] = useState(() => Boolean(supabase));
+  const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
+
+  const refreshRooms = useCallback(async () => {
+    if (!supabase) return;
+    setListLoading(true);
+    try {
+      const rows = await listRooms(supabase);
+      setRooms(rows);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setListLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    let cancelled = false;
+    void listRooms(supabase)
+      .then((rows) => {
+        if (!cancelled) setRooms(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setErr(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   const onCreate = async () => {
     setErr(null);
@@ -25,6 +70,7 @@ export function HomePage() {
     try {
       const slug = generateRoomSlug();
       await insertRoom(supabase, slug, "새 메모장");
+      await refreshRooms();
       navigate(`/room/${slug}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -43,6 +89,25 @@ export function HomePage() {
     }
     navigate(`/room/${slug}`);
   };
+  const onDeleteRoom = async (slug: string, title: string) => {
+    if (!supabase) return;
+    const label = title.trim() || slug;
+    const ok = window.confirm(
+      `「${label}」 방을 삭제할까요?\nDB 스냅샷이 지워지며 되돌릴 수 없습니다.`,
+    );
+    if (!ok) return;
+
+    setErr(null);
+    setDeletingSlug(slug);
+    try {
+      await deleteRoomBySlug(supabase, slug);
+      setRooms((prev) => prev.filter((r) => r.slug !== slug));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingSlug(null);
+    }
+  };
 
   return (
     <div className="page home-page">
@@ -56,8 +121,18 @@ export function HomePage() {
       {!supabase && (
         <p className="banner warn">
           Supabase URL/anon 키가 설정되지 않았습니다. 실시간은 되지만{" "}
-          <strong>새로고침 시 복구</strong>가 되지 않을 수 있습니다.
+          <strong>새로고침 시 복구</strong>·방 목록·삭제가 되지 않을 수 있습니다.
         </p>
+      )}
+
+      {supabase && (
+        <RoomListSection
+          rooms={rooms}
+          loading={listLoading}
+          deletingSlug={deletingSlug}
+          onRefresh={() => void refreshRooms()}
+          onDelete={(slug, title) => void onDeleteRoom(slug, title)}
+        />
       )}
 
       <section className="card">
