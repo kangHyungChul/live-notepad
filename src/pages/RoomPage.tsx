@@ -134,25 +134,27 @@ function RoomLiveSurface({
     host,
     room: slug,
     doc: ydoc,
-    options: { resyncInterval: 5_000 },
+    options: { resyncInterval: 8_000 },
   });
 
-  const { synced: partySynced, retrying, gaveUp } = usePartyKitSyncReady(provider);
+  const { ready: partyReady, retrying, gaveUp } = usePartyKitSyncReady(provider, {
+    ydoc,
+  });
 
   const supabaseMergedRef = useRef(false);
   const [contentReady, setContentReady] = useState(false);
 
   // PartyKit 과 먼저 맞춘 뒤 Supabase 스냅샷을 merge 합니다.
   useEffect(() => {
-    if (!partySynced || supabaseMergedRef.current) return;
+    if (!partyReady || supabaseMergedRef.current) return;
     supabaseMergedRef.current = true;
     if (initialRoom) {
       applyStoredSnapshotToDoc(ydoc, initialRoom);
     }
     setContentReady(true);
-  }, [partySynced, initialRoom, ydoc]);
+  }, [partyReady, initialRoom, ydoc]);
 
-  const editorReady = partySynced && contentReady;
+  const editorReady = partyReady && contentReady;
 
   useYjsSupabasePersistence(
     ydoc,

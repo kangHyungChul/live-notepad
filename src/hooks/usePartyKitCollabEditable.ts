@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { Doc } from "yjs";
 import type YPartyKitProvider from "y-partykit/provider";
 
 export type UsePartyKitSyncReadyOptions = {
@@ -17,19 +18,22 @@ export type UsePartyKitSyncReadyOptions = {
  */
 export function usePartyKitSyncReady(
   provider: YPartyKitProvider,
-  options: UsePartyKitSyncReadyOptions = {},
+  options: UsePartyKitSyncReadyOptions & { ydoc?: Doc } = {},
 ): {
-  /** Yjs sync step 2 완료 — Supabase 병합·에디터 마운트 가능 */
+  /** 편집·Supabase 병합을 열어도 되는 상태 (`synced` 또는 원격 update 수신) */
+  ready: boolean;
+  /** Yjs sync step 2 완료 */
   synced: boolean;
   /** 자동 재연결 시도 중 */
   retrying: boolean;
-  /** 긴 대기 후에도 synced 가 false — 새로고침 안내용 */
+  /** 긴 대기 후에도 ready 가 false — 새로고침 안내용 */
   gaveUp: boolean;
 } {
   const reconnectAfterMs = options.reconnectAfterMs ?? 5_000;
   const gaveUpAfterMs = options.gaveUpAfterMs ?? 30_000;
 
   const [synced, setSynced] = useState(() => provider.synced);
+  const [live, setLive] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [gaveUp, setGaveUp] = useState(false);
   const reconnectCountRef = useRef(0);
@@ -38,9 +42,14 @@ export function usePartyKitSyncReady(
     const bump = () => {
       if (provider.synced) {
         setSynced(true);
+        setLive(true);
         setRetrying(false);
         setGaveUp(false);
         reconnectCountRef.current = 0;
+      }
+      // awareness 가 2 이상이면 다른 클라이언트와 채널이 살아 있는 것
+      if (provider.awareness.getStates().size > 1) {
+        setLive(true);
       }
     };
     bump();
@@ -56,10 +65,23 @@ export function usePartyKitSyncReady(
     };
   }, [provider]);
 
+  // 서버/다른 클라이언트에서 온 Yjs update 가 한 번이라도 오면 채널이 살아 있는 것
   useEffect(() => {
-    if (synced) return;
+    const doc = options.ydoc;
+    if (!doc) return;
+    const onUpdate = (_update: Uint8Array, origin: unknown) => {
+      if (origin === provider) setLive(true);
+    };
+    doc.on("update", onUpdate);
+    return () => {
+      doc.off("update", onUpdate);
+    };
+  }, [options.ydoc, provider]);
+
+  useEffect(() => {
+    if (synced || live) return;
     const id = window.setTimeout(() => {
-      if (provider.synced || !provider.wsconnected) return;
+      if (provider.synced || live || !provider.wsconnected) return;
       if (reconnectCountRef.current >= 3) return;
       reconnectCountRef.current += 1;
       setRetrying(true);
@@ -67,15 +89,16 @@ export function usePartyKitSyncReady(
       provider.connect();
     }, reconnectAfterMs);
     return () => window.clearTimeout(id);
-  }, [provider, synced, reconnectAfterMs]);
+  }, [provider, synced, live, reconnectAfterMs]);
 
   useEffect(() => {
-    if (synced) return;
+    if (synced || live) return;
     const id = window.setTimeout(() => setGaveUp(true), gaveUpAfterMs);
     return () => window.clearTimeout(id);
-  }, [synced, gaveUpAfterMs]);
+  }, [synced, live, gaveUpAfterMs]);
 
-  return { synced, retrying, gaveUp };
+  const ready = synced || live;
+  return { ready, synced, retrying, gaveUp };
 }
 
 /** @deprecated `usePartyKitSyncReady` 사용 권장 */
