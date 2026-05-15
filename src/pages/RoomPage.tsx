@@ -14,7 +14,6 @@ import {
 } from "../lib/roomsRepo";
 import { usePartyKitSyncReady } from "../hooks/usePartyKitCollabEditable";
 import { useYjsSupabasePersistence } from "../hooks/useYjsSupabasePersistence";
-import { agentDebugLog } from "../lib/agentDebugLog";
 import { randomGuestColor, randomGuestLabel } from "../lib/randomGuest";
 
 /**
@@ -132,21 +131,6 @@ function RoomLiveSurface({
   loadErr: string | null;
 }) {
   const host = getPartyKitHost();
-  // #region agent log
-  useEffect(() => {
-    agentDebugLog(
-      "RoomPage.tsx:RoomLiveSurface",
-      "party connect config",
-      {
-        host,
-        slug,
-        hasInitialRoom: Boolean(initialRoom),
-        mode: import.meta.env.PROD ? "prod" : "local",
-      },
-      "D",
-    );
-  }, [host, slug, initialRoom]);
-  // #endregion
   const provider = useYProvider({
     host,
     room: slug,
@@ -168,14 +152,6 @@ function RoomLiveSurface({
     if (initialRoom) {
       applyStoredSnapshotToDoc(ydoc, initialRoom);
     }
-    // #region agent log
-    agentDebugLog(
-      "RoomPage.tsx:supabase-merge",
-      "supabase merged after party ready",
-      { slug, hadSnapshot: Boolean(initialRoom?.y_snapshot) },
-      "E",
-    );
-    // #endregion
     setContentReady(true);
   }, [partyReady, initialRoom, ydoc, slug]);
 

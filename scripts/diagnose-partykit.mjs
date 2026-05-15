@@ -6,29 +6,8 @@ import * as Y from "yjs";
 import YPartyKitProvider from "y-partykit/provider";
 import WebSocket from "ws";
 
-const LOG_ENDPOINT =
-  "http://127.0.0.1:7496/ingest/2f5edff9-b22c-4842-a9b0-9bd55fc4992d";
-const SESSION = "7f8eb8";
-
-function agentLog(message, data, hypothesisId) {
-  const payload = {
-    sessionId: SESSION,
-    location: "scripts/diagnose-partykit.mjs",
-    message,
-    data,
-    hypothesisId,
-    runId: "node-prod-host",
-    timestamp: Date.now(),
-  };
-  console.log(JSON.stringify(payload));
-  fetch(LOG_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": SESSION,
-    },
-    body: JSON.stringify(payload),
-  }).catch(() => {});
+function log(message, data) {
+  console.log(JSON.stringify({ message, data, timestamp: Date.now() }));
 }
 
 const host =
@@ -45,46 +24,46 @@ let remoteUpdates = 0;
 doc.on("update", (update, origin) => {
   const fromProvider = origin === provider;
   if (fromProvider) remoteUpdates += 1;
-  agentLog("ydoc update", { byteLength: update.byteLength, fromProvider }, "C");
+  log("ydoc update", { byteLength: update.byteLength, fromProvider });
 });
 
 provider.on("status", (ev) => {
-  agentLog("status", { ev }, "B");
+  log("status", { ev });
 });
 provider.on("sync", (synced) => {
-  agentLog("sync event", { synced, providerSynced: provider.synced }, "B");
+  log("sync event", { synced, providerSynced: provider.synced });
 });
 provider.on("connection-error", (err) => {
-  agentLog("connection-error", { err: String(err) }, "G");
+  log("connection-error", { err: String(err) });
 });
 provider.on("connection-close", (ev) => {
-  agentLog("connection-close", { ev: String(ev) }, "G");
+  log("connection-close", { ev: String(ev) });
 });
 
 const start = Date.now();
 const interval = setInterval(() => {
-  agentLog("tick", {
+  log("tick", {
     elapsedMs: Date.now() - start,
     synced: provider.synced,
     wsconnected: provider.wsconnected,
     url: provider.url,
     remoteUpdates,
     awarenessSize: provider.awareness.getStates().size,
-  }, "B");
+  });
 }, 1000);
 
 setTimeout(() => {
   clearInterval(interval);
   if (!provider.synced) {
     doc.getText("probe").insert(0, "x");
-    agentLog("local insert after 5s still not synced", {}, "E");
+    log("local insert after 5s still not synced", {});
   }
   setTimeout(() => {
-    agentLog("final", {
+    log("final", {
       synced: provider.synced,
       wsconnected: provider.wsconnected,
       remoteUpdates,
-    }, "B");
+    });
     provider.destroy();
     process.exit(provider.synced ? 0 : 1);
   }, 2000);

@@ -18,18 +18,6 @@ export default class LiveNotepadParty implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
   async onConnect(conn: Party.Connection) {
-    // #region agent log
-    console.log(
-      JSON.stringify({
-        sessionId: "7f8eb8",
-        hypothesisId: "H",
-        location: "party/index.ts:onConnect",
-        message: "onConnect",
-        data: { roomId: this.room.id, connId: conn.id },
-        timestamp: Date.now(),
-      }),
-    );
-    // #endregion
     await yPartyKitOnConnect(conn, this.room, Y_OPTS);
   }
 
@@ -37,27 +25,6 @@ export default class LiveNotepadParty implements Party.Server {
     message: string | ArrayBuffer | ArrayBufferView,
     conn: Party.Connection,
   ) {
-    // #region agent log
-    console.log(
-      JSON.stringify({
-        sessionId: "7f8eb8",
-        hypothesisId: "H",
-        location: "party/index.ts:onMessage",
-        message: "routeYjsMessage",
-        data: {
-          roomId: this.room.id,
-          type: typeof message,
-          byteLength:
-            typeof message === "string"
-              ? message.length
-              : message instanceof ArrayBuffer
-                ? message.byteLength
-                : message.byteLength,
-        },
-        timestamp: Date.now(),
-      }),
-    );
-    // #endregion
     await routeYjsMessage(this.room, conn, message, Y_OPTS);
   }
 
