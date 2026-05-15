@@ -125,7 +125,7 @@ function RoomLiveSurface({
     options: { resyncInterval: 3_000 },
   });
 
-  const { synced: partySynced, retrying, gaveUp } = usePartyKitSyncReady(provider);
+  const { ready: partyReady, degradedSynced, retrying, gaveUp } = usePartyKitSyncReady(provider);
 
   useYjsSupabasePersistence(ydoc, slug, title, supabase, Boolean(supabase));
 
@@ -170,13 +170,18 @@ function RoomLiveSurface({
           Supabase 미설정 — 스냅샷 저장이 비활성화되었습니다.
         </p>
       )}
-      {!partySynced && (
+      {!partyReady && (
         <p className="banner warn">
           PartyKit 과 문서를 맞추는 중입니다
           {retrying ? " (재연결 시도)" : ""}… 완료되면 에디터가 열립니다.
         </p>
       )}
-      {gaveUp && !partySynced && (
+      {degradedSynced && (
+        <p className="banner warn">
+          연결은 정상입니다. 다만 동기화 플래그 반영이 지연되어 에디터를 먼저 엽니다.
+        </p>
+      )}
+      {gaveUp && !partyReady && (
         <p className="banner error">
           동기화가 끝나지 않았습니다. PartyKit 배포·호스트 설정을 확인한 뒤 페이지를 새로고침 해
           주세요.
@@ -186,7 +191,7 @@ function RoomLiveSurface({
         이 브라우저 표시 이름: <strong>{guestName}</strong> (다른 탭은 다른 이름)
       </p>
       <div className="editor-shell">
-        {partySynced ? (
+        {partyReady ? (
           <CollabEditor
             ydoc={ydoc}
             provider={provider}
