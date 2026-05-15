@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as Y from "yjs";
 import useYProvider from "y-partykit/react";
@@ -10,14 +10,22 @@ import { getSupabaseBrowserClient } from "../lib/supabaseClient";
 import {
   applyStoredSnapshotToDoc,
   fetchRoomBySlug,
+  type RoomRow,
 } from "../lib/roomsRepo";
 import { usePartyKitSyncReady } from "../hooks/usePartyKitCollabEditable";
 import { useYjsSupabasePersistence } from "../hooks/useYjsSupabasePersistence";
 import { randomGuestColor, randomGuestLabel } from "../lib/randomGuest";
 
 /**
- * 단일 방 UI: DB에서 Yjs 스냅샷을 먼저 복원한 뒤 PartyKit에 연결합니다.
- * 순서가 뒤바뀌면 빈 문서가 서버에 먼저 올라가 덮어쓸 위험이 있어 `hydrated` 게이트를 둡니다.
+ * 단일 방 UI.
+ *
+ * 동기화 순서(중요):
+ * 1) Supabase 행만 조회(스냅샷은 Y.Doc 에 아직 적용하지 않음)
+ * 2) 빈 Y.Doc 으로 PartyKit 연결 → `provider.synced` 대기
+ * 3) synced 후 Supabase 스냅샷을 merge(이때 서버·다른 클라이언트로 전파)
+ * 4) Tiptap 에디터 마운트
+ *
+ * 연결 전에 스냅샷을 넣으면 Yjs 핸드셰이크가 깨져 기기마다 `remote-like: 0` 이 됩니다.
  */
 export function RoomPage() {
   const { slug: slugParam = "" } = useParams();
@@ -39,6 +47,7 @@ function RoomPageInner({ slug }: { slug: string }) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const ydoc = useMemo(() => new Y.Doc(), []);
   const [hydrated, setHydrated] = useState(false);
+  const [initialRoom, setInitialRoom] = useState<RoomRow | null>(null);
   const [title, setTitle] = useState("메모장");
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [guestName] = useState(() => randomGuestLabel());
@@ -58,7 +67,7 @@ function RoomPageInner({ slug }: { slug: string }) {
           const row = await fetchRoomBySlug(supabase, slug);
           if (cancelled) return;
           if (row) {
-            applyStoredSnapshotToDoc(ydoc, row);
+            setInitialRoom(row);
             setTitle(row.title || "메모장");
           }
         }
@@ -73,7 +82,7 @@ function RoomPageInner({ slug }: { slug: string }) {
     return () => {
       cancelled = true;
     };
-  }, [slug, supabase, ydoc]);
+  }, [slug, supabase]);
 
   if (!hydrated) {
     return (
@@ -88,6 +97,7 @@ function RoomPageInner({ slug }: { slug: string }) {
     <RoomLiveSurface
       slug={slug}
       ydoc={ydoc}
+      initialRoom={initialRoom}
       title={title}
       onTitleChange={setTitle}
       guestName={guestName}
@@ -101,6 +111,7 @@ function RoomPageInner({ slug }: { slug: string }) {
 function RoomLiveSurface({
   slug,
   ydoc,
+  initialRoom,
   title,
   onTitleChange,
   guestName,
@@ -110,6 +121,7 @@ function RoomLiveSurface({
 }: {
   slug: string;
   ydoc: Y.Doc;
+  initialRoom: RoomRow | null;
   title: string;
   onTitleChange: (t: string) => void;
   guestName: string;
@@ -122,16 +134,37 @@ function RoomLiveSurface({
     host,
     room: slug,
     doc: ydoc,
-    // 주기적으로 sync step 1 을 다시 보내 "동기화 중" 에서 멈추는 경우를 줄입니다.
-    options: { resyncInterval: 3_000 },
+    options: { resyncInterval: 5_000 },
   });
 
-  const { ready: partyReady, degradedSynced, retrying, gaveUp } = usePartyKitSyncReady(provider);
+  const { synced: partySynced, retrying, gaveUp } = usePartyKitSyncReady(provider);
+
+  const supabaseMergedRef = useRef(false);
+  const [contentReady, setContentReady] = useState(false);
+
+  // PartyKit 과 먼저 맞춘 뒤 Supabase 스냅샷을 merge 합니다.
+  useEffect(() => {
+    if (!partySynced || supabaseMergedRef.current) return;
+    supabaseMergedRef.current = true;
+    if (initialRoom) {
+      applyStoredSnapshotToDoc(ydoc, initialRoom);
+    }
+    setContentReady(true);
+  }, [partySynced, initialRoom, ydoc]);
+
+  const editorReady = partySynced && contentReady;
+
+  useYjsSupabasePersistence(
+    ydoc,
+    slug,
+    title,
+    supabase,
+    Boolean(supabase) && editorReady,
+  );
+
   const showDebug =
     typeof window !== "undefined" &&
     (import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug"));
-
-  useYjsSupabasePersistence(ydoc, slug, title, supabase, Boolean(supabase));
 
   const shareUrl =
     typeof window !== "undefined"
@@ -174,18 +207,13 @@ function RoomLiveSurface({
           Supabase 미설정 — 스냅샷 저장이 비활성화되었습니다.
         </p>
       )}
-      {!partyReady && (
+      {!editorReady && (
         <p className="banner warn">
           PartyKit 과 문서를 맞추는 중입니다
           {retrying ? " (재연결 시도)" : ""}… 완료되면 에디터가 열립니다.
         </p>
       )}
-      {degradedSynced && (
-        <p className="banner warn">
-          연결은 정상입니다. 다만 동기화 플래그 반영이 지연되어 에디터를 먼저 엽니다.
-        </p>
-      )}
-      {gaveUp && !partyReady && (
+      {gaveUp && !editorReady && (
         <p className="banner error">
           동기화가 끝나지 않았습니다. PartyKit 배포·호스트 설정을 확인한 뒤 페이지를 새로고침 해
           주세요.
@@ -195,7 +223,7 @@ function RoomLiveSurface({
         이 브라우저 표시 이름: <strong>{guestName}</strong> (다른 탭은 다른 이름)
       </p>
       <div className="editor-shell">
-        {partyReady ? (
+        {editorReady ? (
           <CollabEditor
             ydoc={ydoc}
             provider={provider}

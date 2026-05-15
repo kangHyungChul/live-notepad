@@ -45,6 +45,8 @@ export function CollabEditor({
         }),
         Collaboration.configure({
           document: ydoc,
+          // provider 를 넘겨야 awareness·원격 update 가 Tiptap 과 정합됩니다.
+          provider,
         }),
         CollaborationCaret.configure({
           provider,
