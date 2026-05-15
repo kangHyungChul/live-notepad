@@ -11,6 +11,11 @@ type CollabEditorProps = {
   ydoc: Doc;
   /** y-partykit 프로바이더 — awareness와 웹소켓 상태를 제공 */
   provider: YPartyKitProvider;
+  /**
+   * PartyKit 첫 동기화 전에는 false 로 두는 것이 안전합니다.
+   * true 가 되기 전에 입력하면 기기마다 문서가 어긋날 수 있습니다.
+   */
+  editable?: boolean;
   /** 로컬 사용자 표시 이름(익명 Guest 등) */
   localUserName: string;
   /** 로컬 사용자 커서 색 */
@@ -25,11 +30,14 @@ type CollabEditorProps = {
 export function CollabEditor({
   ydoc,
   provider,
+  editable = true,
   localUserName,
   localUserColor,
 }: CollabEditorProps) {
   const editor = useEditor(
     {
+      // 첫 sync 전에는 읽기 전용 — Y.XmlFragment 와 ProseMirror 가 동시에 성장하지 않게 합니다.
+      editable,
       extensions: [
         StarterKit.configure({
           // Yjs 협업 시 ProseMirror 기본 undo/redo 스택은 끄고 Collaboration 확장의 흐름을 사용합니다.
@@ -56,6 +64,12 @@ export function CollabEditor({
     // 로컬 표시 이름/색은 아래 `useEffect`의 `updateUser`로만 갱신해 에디터 인스턴스를 불필요하게 재생성하지 않습니다.
     [ydoc, provider],
   );
+
+  // `useEditor` 는 의존성에 `editable` 을 넣지 않아(인스턴스 재생성 비용) 여기서 동적으로 토글합니다.
+  useEffect(() => {
+    if (!editor) return;
+    editor.setEditable(editable);
+  }, [editor, editable]);
 
   // awareness에 표시될 로컬 사용자 정보가 바뀌면 프로바이더에 다시 반영합니다.
   useEffect(() => {

@@ -241,6 +241,7 @@ npm run party:tail
 | URL에 `//parties` (슬래시 두 개) | 호스트 끝 `/` 제거 후 Redeploy |
 | `No onRequest handler` | `npm run party:deploy` |
 | `연결 끊김` (로컬) | `npm run dev` 로 PartyKit(1999)이 떠 있는지 확인 |
+| 같은 방인데 PC마다 내용이 다름 | 우선 상단 배지가 **연결됨 · 동기화됨** 인지 확인. 한쪽이 끊기면 서로 다른 로컬만 편집할 수 있음. **동기화 전에 입력**하면 Yjs/Tiptap 레이스로 화면이 갈라질 수 있어, 앱은 첫 `synced` 전까지 입력을 잠급니다. |
 
 ### Supabase
 

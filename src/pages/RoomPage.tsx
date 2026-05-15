@@ -10,6 +10,7 @@ import {
   applyStoredSnapshotToDoc,
   fetchRoomBySlug,
 } from "../lib/roomsRepo";
+import { usePartyKitCollabEditable } from "../hooks/usePartyKitCollabEditable";
 import { useYjsSupabasePersistence } from "../hooks/useYjsSupabasePersistence";
 import { randomGuestColor, randomGuestLabel } from "../lib/randomGuest";
 
@@ -122,6 +123,9 @@ function RoomLiveSurface({
     doc: ydoc,
   });
 
+  const { editable: collabEditable, waitingForInitialSync, unlockedByTimeout } =
+    usePartyKitCollabEditable(provider);
+
   useYjsSupabasePersistence(ydoc, slug, title, supabase, Boolean(supabase));
 
   const shareUrl =
@@ -165,6 +169,17 @@ function RoomLiveSurface({
           Supabase 미설정 — 스냅샷 저장이 비활성화되었습니다.
         </p>
       )}
+      {waitingForInitialSync && (
+        <p className="banner warn">
+          PartyKit 과 첫 동기화를 마칠 때까지 입력이 잠깁니다. 잠시만 기다려 주세요…
+        </p>
+      )}
+      {unlockedByTimeout && !provider.synced && (
+        <p className="banner error">
+          PartyKit 동기화가 지연되고 있습니다. 아래 에디터를 열었지만 다른 PC 와 내용이 어긋날 수
+          있습니다. 방화벽·호스트 설정·네트워크를 확인하고 새로고침 해 보세요.
+        </p>
+      )}
       <p className="muted small">
         이 브라우저 표시 이름: <strong>{guestName}</strong> (다른 탭은 다른 이름)
       </p>
@@ -172,6 +187,7 @@ function RoomLiveSurface({
         <CollabEditor
           ydoc={ydoc}
           provider={provider}
+          editable={collabEditable}
           localUserName={guestName}
           localUserColor={guestColor}
         />
