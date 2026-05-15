@@ -1,52 +1,73 @@
 /**
- * PartyKit 방(Party) 서버: WebSocket으로 들어오는 연결마다 Yjs 동기화를 붙입니다.
+ * PartyKit 방(Party) 서버 — Yjs 실시간 동기화.
  *
- * 중요: `onMessage` 를 선언하면 PartyKit ModuleWorker 가 hibernation 모드가 되어
- * 메시지가 `webSocketMessage` → 빈 onMessage 로만 가고, y-partykit 이 onConnect 에
- * 등록한 addEventListener("message") 로는 바이너리가 전달되지 않습니다.
- * → onConnect 만 두고 onMessage 는 선언하지 않습니다.
+ * 배포(Cloudflare Durable Objects) vs 로컬 `partykit dev` 차이:
+ * - 모듈 Worker 에 `onMessage` 가 없으면 PartyKit 이 `invokeOnMessage` 호출 시 예외가 나고
+ *   프로덕션에서 WebSocket 이 끊길 수 있습니다.
+ * - 모듈 Worker 에 빈 `onMessage` 만 넣으면 hibernation 모드가 켜져 Yjs 가 막힙니다.
+ *
+ * → Class Worker + `options.hibernate: false` + noop `onMessage` 가
+ *   프로덕션·로컬 모두에서 y-partykit 리스너와 공존하는 패턴입니다.
  */
 import type * as Party from "partykit/server";
 import { onConnect as yPartyKitOnConnect } from "y-partykit";
 
-const server = {
-  async onConnect(conn: Party.Connection, room: Party.Room) {
+export default class LiveNotepadParty implements Party.Server {
+  /** hibernation 을 끄면 메시지가 addEventListener + y-partykit 경로로 갑니다 */
+  readonly options = { hibernate: false };
+
+  constructor(readonly room: Party.Room) {}
+
+  async onConnect(conn: Party.Connection) {
     // #region agent log
     console.log(
       JSON.stringify({
         sessionId: "7f8eb8",
-        hypothesisId: "A",
+        hypothesisId: "F",
         location: "party/index.ts:onConnect",
-        message: "y-partykit onConnect start",
-        data: { roomId: room.id, connId: conn.id },
+        message: "class worker onConnect",
+        data: { roomId: this.room.id, connId: conn.id, hibernate: false },
         timestamp: Date.now(),
       }),
     );
     // #endregion
-    await yPartyKitOnConnect(conn, room, {
+    await yPartyKitOnConnect(conn, this.room, {
       persist: false,
       gc: true,
     });
+  }
+
+  /**
+   * PartyKit ClassWorker 가 attachSocketEventHandlers 에서 매 메시지마다 호출합니다.
+   * Yjs 바이너리는 y-partykit 이 onConnect 에 등록한 리스너가 처리합니다.
+   */
+  onMessage(_message: string | ArrayBuffer | ArrayBufferView) {
     // #region agent log
     console.log(
       JSON.stringify({
         sessionId: "7f8eb8",
-        hypothesisId: "A",
-        location: "party/index.ts:onConnect",
-        message: "y-partykit onConnect done",
-        data: { roomId: room.id },
+        hypothesisId: "F",
+        location: "party/index.ts:onMessage",
+        message: "noop onMessage invoked",
+        data: {
+          type: typeof _message,
+          byteLength:
+            _message instanceof ArrayBuffer
+              ? _message.byteLength
+              : typeof _message === "string"
+                ? _message.length
+                : 0,
+        },
         timestamp: Date.now(),
       }),
     );
     // #endregion
-  },
+  }
 
-  onRequest(_req: Party.Request, room: Party.Room) {
-    return new Response(`live-notepad party ok (room: ${room.id})`, {
+  onRequest() {
+    return new Response(`live-notepad party ok (room: ${this.room.id})`, {
       status: 200,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
-  },
-} satisfies Party.Worker;
-
-export default server;
+  }
+}

@@ -8,8 +8,10 @@ export function agentDebugLog(
   message: string,
   data: Record<string, unknown>,
   hypothesisId: string,
-  runId = "pre-fix",
+  runId?: string,
 ): void {
+  const resolvedRunId =
+    runId ?? (import.meta.env.PROD ? "prod" : "local");
   // #region agent log
   fetch(ENDPOINT, {
     method: "POST",
@@ -23,7 +25,7 @@ export function agentDebugLog(
       message,
       data,
       hypothesisId,
-      runId,
+      runId: resolvedRunId,
       timestamp: Date.now(),
     }),
   }).catch(() => {});

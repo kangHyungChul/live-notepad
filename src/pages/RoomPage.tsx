@@ -30,7 +30,8 @@ import { randomGuestColor, randomGuestLabel } from "../lib/randomGuest";
  */
 export function RoomPage() {
   const { slug: slugParam = "" } = useParams();
-  const slug = slugParam.trim();
+  // `/room/abc&debug=1` 처럼 잘못된 URL 도 방 ID 만 쓰도록 정리
+  const slug = slugParam.trim().split(/[?&]/)[0] ?? "";
 
   if (!slug) {
     return (
@@ -136,7 +137,12 @@ function RoomLiveSurface({
     agentDebugLog(
       "RoomPage.tsx:RoomLiveSurface",
       "party connect config",
-      { host, slug, hasInitialRoom: Boolean(initialRoom) },
+      {
+        host,
+        slug,
+        hasInitialRoom: Boolean(initialRoom),
+        mode: import.meta.env.PROD ? "prod" : "local",
+      },
       "D",
     );
   }, [host, slug, initialRoom]);
