@@ -31,6 +31,12 @@ export type RoomStorageUsage = {
   limitBytes: number;
 };
 
+/** 목록에 있는 파일 크기 합으로 방 사용량 계산 (표시용 단일 출처) */
+export function computeRoomStorageUsageFromFiles(files: RoomFileRow[]): RoomStorageUsage {
+  const usedBytes = files.reduce((sum, row) => sum + Number(row.size_bytes), 0);
+  return { usedBytes, limitBytes: MAX_ROOM_STORAGE_BYTES };
+}
+
 /**
  * 만료된 파일 메타·Storage 객체를 DB 함수로 정리합니다.
  */

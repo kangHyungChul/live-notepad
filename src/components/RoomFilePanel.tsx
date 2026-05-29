@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   canPreviewRoomFile,
@@ -6,12 +6,11 @@ import {
   MAX_ROOM_STORAGE_BYTES,
 } from "../lib/filePolicy";
 import {
+  computeRoomStorageUsageFromFiles,
   deleteRoomFile,
   downloadRoomFile,
-  getRoomStorageUsage,
   listRoomFiles,
   type RoomFileRow,
-  type RoomStorageUsage,
   uploadRoomFile,
 } from "../lib/roomFilesRepo";
 import {
@@ -61,7 +60,6 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
   const clientIdRef = useRef(crypto.randomUUID());
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<RoomFileRow[]>([]);
-  const [usage, setUsage] = useState<RoomStorageUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -90,6 +88,9 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
   const pendingUploads = mergePendingUploads(localPending, remotePending);
   const showList = loading || files.length > 0 || pendingUploads.length > 0;
 
+  /** 용량은 files 목록 합계만 사용 — 삭제·Realtime 이중 차감 방지 */
+  const usage = useMemo(() => computeRoomStorageUsageFromFiles(files), [files]);
+
   const lastBroadcastPercentRef = useRef<Map<string, number>>(new Map());
 
   const emitUploadBroadcast = (
@@ -113,12 +114,8 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
   const refresh = useCallback(async (purgeExpired = false) => {
     setErr(null);
     try {
-      const [rows, storage] = await Promise.all([
-        listRoomFiles(supabase, roomSlug, { purgeExpired }),
-        getRoomStorageUsage(supabase, roomSlug),
-      ]);
+      const rows = await listRoomFiles(supabase, roomSlug, { purgeExpired });
       setFiles(rows);
-      setUsage(storage);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -137,7 +134,6 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
         change,
         roomSlug,
         setFiles,
-        setUsage,
         setPreviewRow,
       );
     },
@@ -246,14 +242,6 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
       await deleteRoomFile(supabase, row);
       setFiles((prev) => prev.filter((f) => f.id !== row.id));
       setPreviewRow((prev) => (prev?.id === row.id ? null : prev));
-      setUsage((prev) =>
-        prev
-          ? {
-              ...prev,
-              usedBytes: Math.max(0, prev.usedBytes - row.size_bytes),
-            }
-          : prev,
-      );
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -261,12 +249,10 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
     }
   };
 
-  const usedLabel = usage
-    ? `${formatBytes(usage.usedBytes)} / ${formatBytes(usage.limitBytes)}`
-    : `${formatBytes(0)} / ${formatBytes(MAX_ROOM_STORAGE_BYTES)}`;
+  const usedLabel = `${formatBytes(usage.usedBytes)} / ${formatBytes(usage.limitBytes)}`;
 
   const usagePercent =
-    usage && usage.limitBytes > 0
+    usage.limitBytes > 0
       ? Math.min(100, Math.round((usage.usedBytes / usage.limitBytes) * 100))
       : 0;
 

@@ -5,7 +5,7 @@ import type {
   RealtimePostgresChangesPayload,
   SupabaseClient,
 } from "@supabase/supabase-js";
-import type { RoomFileRow, RoomStorageUsage } from "../lib/roomFilesRepo";
+import type { RoomFileRow } from "../lib/roomFilesRepo";
 
 /** Realtime 으로 전달되는 room_files 변경 */
 export type RoomFilesRealtimeChange = {
@@ -105,21 +105,17 @@ export function useRoomFilesRealtime(
   }, [supabase, roomSlug]);
 }
 
-/** Realtime 페이로드를 로컬 목록·용량·미리보기 상태에 즉시 반영 */
+/** Realtime 페이로드를 로컬 목록·미리보기 상태에 즉시 반영 (용량은 files 에서 파생) */
 export function applyRoomFilesRealtimeChange(
   change: RoomFilesRealtimeChange,
   roomSlug: string,
   setFiles: Dispatch<SetStateAction<RoomFileRow[]>>,
-  setUsage: Dispatch<SetStateAction<RoomStorageUsage | null>>,
   setPreviewRow: Dispatch<SetStateAction<RoomFileRow | null>>,
 ): void {
   if (change.eventType === "INSERT" && change.newRow) {
     const row = change.newRow;
     if (row.room_slug !== roomSlug) return;
     setFiles((prev) => (prev.some((f) => f.id === row.id) ? prev : [row, ...prev]));
-    setUsage((prev) =>
-      prev ? { ...prev, usedBytes: prev.usedBytes + row.size_bytes } : prev,
-    );
     return;
   }
 
@@ -136,17 +132,7 @@ export function applyRoomFilesRealtimeChange(
     if (!id) return;
     if (old?.room_slug && old.room_slug !== roomSlug) return;
 
-    let removedSize = old?.size_bytes ?? 0;
-    setFiles((prev) => {
-      const removed = prev.find((f) => f.id === id);
-      if (removed) removedSize = removed.size_bytes;
-      return prev.filter((f) => f.id !== id);
-    });
-    if (removedSize > 0) {
-      setUsage((u) =>
-        u ? { ...u, usedBytes: Math.max(0, u.usedBytes - removedSize) } : u,
-      );
-    }
+    setFiles((prev) => prev.filter((f) => f.id !== id));
     setPreviewRow((prev) => (prev?.id === id ? null : prev));
   }
 }
