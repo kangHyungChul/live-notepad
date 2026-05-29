@@ -9,6 +9,7 @@ import {
   computeRoomStorageUsageFromFiles,
   deleteRoomFile,
   downloadRoomFile,
+  isUploadCancelledError,
   listRoomFiles,
   type RoomFileRow,
   uploadRoomFile,
@@ -92,12 +93,28 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
   const usage = useMemo(() => computeRoomStorageUsageFromFiles(files), [files]);
 
   const lastBroadcastPercentRef = useRef<Map<string, number>>(new Map());
+  /** 업로드 중지 — uploadId → AbortController (본인 업로드만 등록) */
+  const uploadAbortRef = useRef<Map<string, AbortController>>(new Map());
+  /** onCancelUpload 에서 이미 cancel broadcast 한 uploadId */
+  const cancelBroadcastSentRef = useRef<Set<string>>(new Set());
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      for (const controller of uploadAbortRef.current.values()) {
+        controller.abort();
+      }
+      uploadAbortRef.current.clear();
+    };
+  }, []);
 
   const emitUploadBroadcast = (
     uploadId: string,
     fileName: string,
     percent: number,
-    phase: "start" | "progress" | "done" | "error",
+    phase: "start" | "progress" | "done" | "error" | "cancel",
     error?: string,
   ) => {
     if (phase === "progress") {
@@ -105,21 +122,35 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
       if (percent - last < 5 && percent < 100) return;
       lastBroadcastPercentRef.current.set(uploadId, percent);
     }
-    if (phase === "done" || phase === "error") {
+    if (phase === "done" || phase === "error" || phase === "cancel") {
       lastBroadcastPercentRef.current.delete(uploadId);
     }
     broadcast({ uploadId, fileName, percent, phase, error });
   };
 
+  /** 업로드 당사자만 호출 — xhr 중지 + 다른 참가자 pending 제거 */
+  const onCancelUpload = (uploadId: string, fileName: string) => {
+    const controller = uploadAbortRef.current.get(uploadId);
+    if (!controller) return;
+    controller.abort();
+    uploadAbortRef.current.delete(uploadId);
+    setActiveUploads((prev) => prev.filter((u) => u.id !== uploadId));
+    cancelBroadcastSentRef.current.add(uploadId);
+    emitUploadBroadcast(uploadId, fileName, 0, "cancel");
+  };
+
   const refresh = useCallback(async (purgeExpired = false) => {
+    if (!mountedRef.current) return;
     setErr(null);
     try {
       const rows = await listRoomFiles(supabase, roomSlug, { purgeExpired });
-      setFiles(rows);
+      if (mountedRef.current) setFiles(rows);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      if (mountedRef.current) {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [supabase, roomSlug]);
 
@@ -154,8 +185,13 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
     if (items.length === 0) return;
 
     setErr(null);
+    let hadCancel = false;
     for (const file of items) {
       const uploadId = crypto.randomUUID();
+      const abortController = new AbortController();
+      uploadAbortRef.current.set(uploadId, abortController);
+      cancelBroadcastSentRef.current.delete(uploadId);
+
       setActiveUploads((prev) => [
         ...prev,
         { id: uploadId, name: file.name, percent: 0, status: "uploading" },
@@ -164,7 +200,9 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
 
       try {
         await uploadRoomFile(supabase, roomSlug, file, {
+          signal: abortController.signal,
           onProgress: (p) => {
+            if (abortController.signal.aborted) return;
             setActiveUploads((prev) =>
               prev.map((u) =>
                 u.id === uploadId ? { ...u, percent: p.percent } : u,
@@ -173,6 +211,8 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
             emitUploadBroadcast(uploadId, file.name, p.percent, "progress");
           },
         });
+        uploadAbortRef.current.delete(uploadId);
+        cancelBroadcastSentRef.current.delete(uploadId);
         setActiveUploads((prev) =>
           prev.map((u) =>
             u.id === uploadId ? { ...u, percent: 100, status: "done" } : u,
@@ -180,6 +220,18 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
         );
         emitUploadBroadcast(uploadId, file.name, 100, "done");
       } catch (e) {
+        uploadAbortRef.current.delete(uploadId);
+        if (isUploadCancelledError(e)) {
+          hadCancel = true;
+          setActiveUploads((prev) => prev.filter((u) => u.id !== uploadId));
+          if (!cancelBroadcastSentRef.current.has(uploadId)) {
+            emitUploadBroadcast(uploadId, file.name, 0, "cancel");
+          }
+          cancelBroadcastSentRef.current.delete(uploadId);
+          await refresh(false);
+          continue;
+        }
+        cancelBroadcastSentRef.current.delete(uploadId);
         const msg = e instanceof Error ? e.message : String(e);
         setActiveUploads((prev) =>
           prev.map((u) =>
@@ -191,7 +243,9 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
       }
     }
 
-    await refresh(false);
+    if (!hadCancel) {
+      await refresh(false);
+    }
     window.setTimeout(() => {
       setActiveUploads((prev) => prev.filter((u) => u.status === "uploading"));
     }, 2500);
@@ -354,6 +408,16 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
                       </div>
                     )}
                   </div>
+                  {u.isLocal && u.status === "uploading" && (
+                    <button
+                      type="button"
+                      className="btn small-btn danger room-files__cancel-upload"
+                      title="업로드 중지"
+                      onClick={() => onCancelUpload(u.uploadId, u.fileName)}
+                    >
+                      중지
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

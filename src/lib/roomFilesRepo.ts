@@ -26,6 +26,18 @@ export type UploadProgress = {
   percent: number;
 };
 
+/** 사용자가 업로드 중지한 경우 — UI 에서 일반 오류와 구분 */
+export class UploadCancelledError extends Error {
+  constructor() {
+    super("업로드가 취소되었습니다.");
+    this.name = "UploadCancelledError";
+  }
+}
+
+export function isUploadCancelledError(err: unknown): boolean {
+  return err instanceof UploadCancelledError;
+}
+
 export type RoomStorageUsage = {
   usedBytes: number;
   limitBytes: number;
@@ -92,22 +104,82 @@ function buildStoragePath(roomSlug: string, fileId: string, originalName: string
 }
 
 /**
- * XMLHttpRequest 로 Storage REST API 업로드 — 진행률 콜백 지원.
+ * 중지·실패 시 Storage 객체 + DB 메타(있으면) 제거 (재시도 포함).
+ */
+async function cleanupRoomFileUpload(
+  supabase: SupabaseClient,
+  fileId: string,
+  storagePath: string,
+  maxAttempts = 3,
+): Promise<void> {
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await supabase.from("room_files").delete().eq("id", fileId);
+    const { error } = await supabase.storage.from(BUCKET).remove([storagePath]);
+    if (!error) return;
+    if (attempt < maxAttempts - 1) {
+      await delay(350 * (attempt + 1));
+    } else {
+      console.warn("[room-files] 업로드 정리 중 Storage 삭제 실패:", error.message);
+    }
+  }
+}
+
+/** signal 이 abort 되면 UploadCancelledError 로 거부하는 Promise 래퍼 */
+function rejectOnAbort<T>(promise: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return Promise.resolve(promise);
+  if (signal.aborted) return Promise.reject(new UploadCancelledError());
+
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(new UploadCancelledError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
+/** await 사이에도 중지 신호를 확인 (용량 조회 등) */
+async function awaitWithAbort<T>(promise: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  const result = await rejectOnAbort(promise, signal);
+  if (signal?.aborted) throw new UploadCancelledError();
+  return result;
+}
+
+/**
+ * XMLHttpRequest 로 Storage REST API 업로드 — 진행률·중지(AbortSignal) 지원.
  */
 function uploadToStorageWithProgress(
   supabaseUrl: string,
   anonKey: string,
   storagePath: string,
   file: File,
-  onProgress?: (p: UploadProgress) => void,
+  options?: {
+    onProgress?: (p: UploadProgress) => void;
+    signal?: AbortSignal;
+  },
 ): Promise<void> {
   const encodedPath = storagePath
     .split("/")
     .map((seg) => encodeURIComponent(seg))
     .join("/");
   const url = `${supabaseUrl.replace(/\/$/, "")}/storage/v1/object/${BUCKET}/${encodedPath}`;
+  const signal = options?.signal;
 
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new UploadCancelledError());
+      return;
+    }
+
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
     xhr.setRequestHeader("Authorization", `Bearer ${anonKey}`);
@@ -115,13 +187,23 @@ function uploadToStorageWithProgress(
     xhr.setRequestHeader("x-upsert", "false");
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
+    const detach = () => signal?.removeEventListener("abort", onSignalAbort);
+    const onSignalAbort = () => xhr.abort();
+    signal?.addEventListener("abort", onSignalAbort);
+
     xhr.upload.onprogress = (ev) => {
-      if (!onProgress || !ev.lengthComputable) return;
+      if (signal?.aborted) return;
+      if (!options?.onProgress || !ev.lengthComputable) return;
       const percent = ev.total > 0 ? Math.round((ev.loaded / ev.total) * 100) : 0;
-      onProgress({ loaded: ev.loaded, total: ev.total, percent });
+      options.onProgress({ loaded: ev.loaded, total: ev.total, percent });
     };
 
     xhr.onload = () => {
+      detach();
+      if (signal?.aborted) {
+        reject(new UploadCancelledError());
+        return;
+      }
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve();
         return;
@@ -136,8 +218,14 @@ function uploadToStorageWithProgress(
       reject(new Error(msg));
     };
 
-    xhr.onerror = () => reject(new Error("네트워크 오류로 업로드에 실패했습니다."));
-    xhr.onabort = () => reject(new Error("업로드가 취소되었습니다."));
+    xhr.onerror = () => {
+      detach();
+      reject(new Error("네트워크 오류로 업로드에 실패했습니다."));
+    };
+    xhr.onabort = () => {
+      detach();
+      reject(new UploadCancelledError());
+    };
     xhr.send(file);
   });
 }
@@ -152,14 +240,26 @@ export async function uploadRoomFile(
   file: File,
   options?: {
     onProgress?: (p: UploadProgress) => void;
+    /** 중지 시 xhr.abort + Storage/DB 정리 */
+    signal?: AbortSignal;
   },
 ): Promise<RoomFileRow> {
+  const signal = options?.signal;
+  const throwIfAborted = () => {
+    if (signal?.aborted) throw new UploadCancelledError();
+  };
+
   const policy = validateUploadFile(file);
   if (policy.ok === false) {
     throw new Error(policy.reason);
   }
 
-  const { usedBytes, limitBytes } = await getRoomStorageUsage(supabase, roomSlug);
+  throwIfAborted();
+
+  const { usedBytes, limitBytes } = await awaitWithAbort(
+    getRoomStorageUsage(supabase, roomSlug),
+    signal,
+  );
   if (usedBytes + file.size > limitBytes) {
     const remain = Math.max(0, limitBytes - usedBytes);
     throw new Error(
@@ -174,48 +274,62 @@ export async function uploadRoomFile(
     throw new Error("Supabase 환경 변수가 없어 파일을 업로드할 수 없습니다.");
   }
 
-  // DB id 와 Storage 경로 세그먼트를 동일 UUID 로 맞춰 추적을 단순화합니다.
   const fileId = crypto.randomUUID();
   const storagePath = buildStoragePath(roomSlug, fileId, file.name);
   const mime = file.type || "application/octet-stream";
-  // expires_at 은 DB 기본값(3일)과 동일하게 클라이언트에서도 명시 (타임존 일관)
   const expiresAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
-  // 1) Storage 업로드 → 2) 메타 insert (실패 시 Storage 롤백)
-  await uploadToStorageWithProgress(
-    supabaseUrl,
-    anonKey,
-    storagePath,
-    file,
-    options?.onProgress,
-  );
+  try {
+    throwIfAborted();
 
-  const { data, error } = await supabase
-    .from("room_files")
-    .insert({
-      id: fileId,
-      room_slug: roomSlug,
-      storage_path: storagePath,
-      original_name: file.name,
-      mime_type: mime,
-      size_bytes: file.size,
-      expires_at: expiresAt,
-    })
-    .select()
-    .single();
+    await uploadToStorageWithProgress(supabaseUrl, anonKey, storagePath, file, {
+      onProgress: options?.onProgress,
+      signal,
+    });
 
-  if (error) {
-    // 메타 등록 실패 시 Storage 고아 객체 제거 시도
-    await supabase.storage.from(BUCKET).remove([storagePath]);
-    if (error.message.includes("ROOM_STORAGE_LIMIT_EXCEEDED")) {
-      throw new Error(
-        `방 저장 용량 한도(${formatBytes(MAX_ROOM_STORAGE_BYTES)})를 초과했습니다.`,
-      );
+    throwIfAborted();
+
+    const { data, error } = await awaitWithAbort(
+      supabase
+        .from("room_files")
+        .insert({
+          id: fileId,
+          room_slug: roomSlug,
+          storage_path: storagePath,
+          original_name: file.name,
+          mime_type: mime,
+          size_bytes: file.size,
+          expires_at: expiresAt,
+        })
+        .select()
+        .single(),
+      signal,
+    );
+
+    if (error) {
+      await supabase.storage.from(BUCKET).remove([storagePath]);
+      if (error.message.includes("ROOM_STORAGE_LIMIT_EXCEEDED")) {
+        throw new Error(
+          `방 저장 용량 한도(${formatBytes(MAX_ROOM_STORAGE_BYTES)})를 초과했습니다.`,
+        );
+      }
+      throw error;
     }
-    throw error;
-  }
 
-  return data as RoomFileRow;
+    throwIfAborted();
+    return data as RoomFileRow;
+  } catch (e) {
+    // 명시적 취소만 취소로 처리 — 용량 초과·네트워크 오류 등은 그대로 전파
+    if (isUploadCancelledError(e)) {
+      await cleanupRoomFileUpload(supabase, fileId, storagePath);
+      // insert 요청이 늦게 완료되는 레이스 — 잠시 후 한 번 더 정리
+      window.setTimeout(() => {
+        void cleanupRoomFileUpload(supabase, fileId, storagePath);
+      }, 1_500);
+      throw new UploadCancelledError();
+    }
+    throw e;
+  }
 }
 
 /**

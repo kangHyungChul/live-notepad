@@ -8,7 +8,7 @@ export type RoomFileUploadBroadcastPayload = {
   fileName: string;
   by: string;
   percent: number;
-  phase: "start" | "progress" | "done" | "error";
+  phase: "start" | "progress" | "done" | "error" | "cancel";
   error?: string;
 };
 
@@ -71,7 +71,7 @@ export function useRoomFileUploadBroadcast(
         if (!p?.uploadId || p.clientId === clientId) return;
         const now = Date.now();
 
-        if (p.phase === "done") {
+        if (p.phase === "done" || p.phase === "cancel") {
           setRemotePending((prev) => prev.filter((u) => u.uploadId !== p.uploadId));
           return;
         }

@@ -421,6 +421,11 @@ code {
   gap: 0.65rem;
 }
 
+.room-files__cancel-upload {
+  flex-shrink: 0;
+  align-self: center;
+}
+
 .room-files__pending-meta {
   flex: 1;
   min-width: 0;
