@@ -14,6 +14,7 @@ import {
   type RoomStorageUsage,
   uploadRoomFile,
 } from "../lib/roomFilesRepo";
+import { useRoomFilesRealtime } from "../hooks/useRoomFilesRealtime";
 import { RoomFilePreview } from "./RoomFilePreview";
 
 type ActiveUpload = {
@@ -74,6 +75,9 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // 다른 탭·사용자가 업로드/삭제하면 목록을 다시 불러옵니다.
+  useRoomFilesRealtime(supabase, roomSlug, refresh);
 
   const processFiles = async (fileList: FileList | File[]) => {
     const items = Array.from(fileList);

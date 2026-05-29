@@ -80,6 +80,7 @@ npm run db:push
 - **방당 100MB** 누적 한도 (클라이언트 + DB 트리거)
 - 업로드 파일 **3일 후 자동 삭제** (`pg_cron` 매시 정각 + 목록 조회 시 `purge_expired_room_files`)
 - `005` 적용 전: Supabase 대시보드 → **Database → Extensions → pg_cron** 활성화
+- `006`: 방 파일 목록 **실시간 동기화** (`room_files` Realtime publication)
 
 ---
 
