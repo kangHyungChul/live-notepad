@@ -15,6 +15,22 @@ export function clearYXmlFragmentIfExists(ydoc: Y.Doc, fragmentName: string): vo
   }
 }
 
+/** PartyKit sync 후 document-store 에 본문이 있는지 (스냅샷 merge 여부 판단용) */
+export function yDocHasBlockNoteContent(ydoc: Y.Doc): boolean {
+  if (!ydoc.share.has(BLOCKNOTE_YJS_FRAGMENT)) return false;
+  return ydoc.getXmlFragment(BLOCKNOTE_YJS_FRAGMENT).length > 0;
+}
+
+/** 삭제·구조 변경 감지용 — document-store JSON 지문 */
+export function getBlockNoteFragmentFingerprint(ydoc: Y.Doc): string {
+  if (!ydoc.share.has(BLOCKNOTE_YJS_FRAGMENT)) return "";
+  try {
+    return JSON.stringify(ydoc.getXmlFragment(BLOCKNOTE_YJS_FRAGMENT).toJSON());
+  } catch {
+    return "";
+  }
+}
+
 /**
  * XmlFragment JSON 에 BlockNote 블록 마커가 있는지 대략 검사합니다.
  * Tiptap StarterKit XML 이 섞이면 보통 `blockContainer` 가 없습니다.

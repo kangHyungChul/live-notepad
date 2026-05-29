@@ -16,7 +16,11 @@ import {
 } from "../lib/roomsRepo";
 import { usePartyKitSyncReady } from "../hooks/usePartyKitCollabEditable";
 import { useYjsSupabasePersistence } from "../hooks/useYjsSupabasePersistence";
-import { prepareYDocForBlockNote, snapshotLooksLikeBlockNoteContent } from "../lib/blocknoteYjs";
+import {
+  prepareYDocForBlockNote,
+  snapshotLooksLikeBlockNoteContent,
+  yDocHasBlockNoteContent,
+} from "../lib/blocknoteYjs";
 import { randomGuestColor, randomGuestLabel } from "../lib/randomGuest";
 
 /**
@@ -156,7 +160,8 @@ function RoomLiveSurface({
     const snapshotUsable =
       Boolean(initialRoom?.y_snapshot) &&
       snapshotLooksLikeBlockNoteContent(initialRoom?.y_snapshot ?? null);
-    if (initialRoom && snapshotUsable) {
+    // PartyKit 에 이미 본문이 있으면 Supabase 스냅샷을 merge 하지 않음 (삭제·최신 편집 되살림 방지)
+    if (initialRoom && snapshotUsable && !yDocHasBlockNoteContent(ydoc)) {
       applyStoredSnapshotToDoc(ydoc, initialRoom);
     }
     prepareYDocForBlockNote(ydoc);

@@ -6,6 +6,8 @@ import "@blocknote/core/style.css";
 import "@blocknote/mantine/style.css";
 import type { Doc } from "yjs";
 import type YPartyKitProvider from "y-partykit/provider";
+import { useMemo } from "react";
+import { useBlockNoteCopyFallback } from "../hooks/useBlockNoteCopyFallback";
 import { BLOCKNOTE_YJS_FRAGMENT } from "../lib/blocknoteYjs";
 
 type BlockNoteCollabEditorProps = {
@@ -44,7 +46,22 @@ export function BlockNoteCollabEditor({
     [ydoc, provider, localUserName, localUserColor],
   );
 
+  // 플로팅 UI(툴바·슬래시 메뉴)를 body 로 분리 — editor-shell 위 오버레이가 선택·복사를 막는 것 방지
+  const portalElements = useMemo(
+    (): { default: null } => ({ default: null }),
+    [],
+  );
+
+  // BlockNote copyToClipboard 가 빈 클립보드로 copy/cut 을 삼키는 문제 보완
+  useBlockNoteCopyFallback(editor);
+
   return (
-    <BlockNoteView editor={editor} theme="dark" editable={editable} className="blocknote-collab-editor" />
+    <BlockNoteView
+      editor={editor}
+      theme="dark"
+      editable={editable}
+      className="blocknote-collab-editor"
+      portalElements={portalElements}
+    />
   );
 }

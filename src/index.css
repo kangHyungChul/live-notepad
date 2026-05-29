@@ -262,25 +262,20 @@ code {
   color: var(--muted);
 }
 
-/* BlockNote: min-height 는 본체 컨테이너(bn-container)에만 — portalElement 형제 div 는 제외 */
+/* BlockNote: min-height 는 본체 컨테이너(bn-container)에만 */
 .editor-shell .bn-container.blocknote-collab-editor {
   min-height: 48vh;
 }
 
-/* BlockNote portalElement — 슬래시 메뉴·툴바 등 플로팅 UI 마운트용, 레이아웃 공간은 차지하지 않음 */
-.editor-shell .bn-root:not(.bn-container) {
-  min-height: 0;
-  height: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.editor-shell .bn-root:not(.bn-container) > * {
-  pointer-events: auto;
-}
-
 .editor-shell .bn-editor {
   padding: 1rem 1.25rem 2rem;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.editor-shell .bn-inline-content {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* 접속자 목록 (툴바) */

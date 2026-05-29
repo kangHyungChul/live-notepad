@@ -1,26 +1,25 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Doc } from "yjs";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getBlockNoteFragmentFingerprint } from "../lib/blocknoteYjs";
 import { upsertRoomYjsSnapshot } from "../lib/roomsRepo";
 
 const DEBOUNCE_MS = 2000;
 
 /**
  * Y.Doc 변경을 디바운스하여 Supabase `rooms.y_snapshot`에 반영합니다.
+ * - 블록 삭제(비디오·파일 등)는 지문이 줄어드는 즉시 flush — 되살림 방지
  * - 탭 전환/닫힘 시 한 번 더 flush 해 유실을 줄입니다.
- * - Supabase가 없으면(enabled=false) 아무 것도 하지 않습니다.
  */
 export function useYjsSupabasePersistence(
   ydoc: Doc,
   slug: string,
-  /** rooms.title과 함께 스냅샷 upsert에 반영 */
   title: string,
   supabase: SupabaseClient | null,
   enabled: boolean,
 ): void {
   const titleRef = useRef(title);
 
-  // 렌더 중 ref를 갱신하면 eslint(react-hooks/refs) 규칙에 걸리므로 이펙트에서만 동기화합니다.
   useEffect(() => {
     titleRef.current = title;
   }, [title]);
@@ -34,6 +33,7 @@ export function useYjsSupabasePersistence(
     if (!enabled || !supabase) return;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastFingerprint = getBlockNoteFragmentFingerprint(ydoc);
 
     const schedule = () => {
       if (timer !== null) clearTimeout(timer);
@@ -44,6 +44,18 @@ export function useYjsSupabasePersistence(
     };
 
     const onUpdate = () => {
+      const nextFingerprint = getBlockNoteFragmentFingerprint(ydoc);
+      const contentRemoved = nextFingerprint.length < lastFingerprint.length;
+      lastFingerprint = nextFingerprint;
+
+      // 비디오·파일 블록 삭제 등 구조 축소 → DB 에 옛 스냅샷이 남지 않도록 즉시 저장
+      if (contentRemoved) {
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        void flush();
+        return;
+      }
+
       schedule();
     };
 
@@ -64,7 +76,6 @@ export function useYjsSupabasePersistence(
     };
   }, [enabled, flush, slug, supabase, ydoc]);
 
-  // 제목만 바뀐 경우에도 rooms.title을 갱신(본문 변경 없이 upsert가 안 될 수 있음)
   useEffect(() => {
     if (!enabled || !supabase) return;
     const t = setTimeout(() => void flush(), 600);
