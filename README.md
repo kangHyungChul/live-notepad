@@ -72,7 +72,14 @@ npm run db:push
 
 ### 수동
 
-대시보드 SQL Editor에 [`001_rooms.sql`](supabase/migrations/001_rooms.sql) 실행.
+대시보드 SQL Editor에 [`001_rooms.sql`](supabase/migrations/001_rooms.sql), [`004_room_files.sql`](supabase/migrations/004_room_files.sql), [`005_room_files_quota_cron.sql`](supabase/migrations/005_room_files_quota_cron.sql) 실행.
+
+방 파일 기능은 `004`·`005` 마이그레이션이 필요합니다.
+
+- Storage 버킷 `room-files`, 메타 테이블 `room_files`
+- **방당 100MB** 누적 한도 (클라이언트 + DB 트리거)
+- 업로드 파일 **3일 후 자동 삭제** (`pg_cron` 매시 정각 + 목록 조회 시 `purge_expired_room_files`)
+- `005` 적용 전: Supabase 대시보드 → **Database → Extensions → pg_cron** 활성화
 
 ---
 

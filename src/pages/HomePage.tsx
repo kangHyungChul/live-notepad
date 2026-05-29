@@ -93,7 +93,7 @@ export function HomePage() {
     if (!supabase) return;
     const label = title.trim() || slug;
     const ok = window.confirm(
-      `「${label}」 방을 삭제할까요?\nDB 스냅샷이 지워지며 되돌릴 수 없습니다.`,
+      `「${label}」 방을 삭제할까요?\nDB 스냅샷·업로드된 파일이 함께 지워지며 되돌릴 수 없습니다.`,
     );
     if (!ok) return;
 

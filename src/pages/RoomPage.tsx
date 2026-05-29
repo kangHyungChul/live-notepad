@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import * as Y from "yjs";
 import useYProvider from "y-partykit/react";
 import { CollabEditor } from "../components/CollabEditor";
+import { RoomFilePanel } from "../components/RoomFilePanel";
 import { SyncDebugPanel } from "../components/SyncDebugPanel";
 import { SyncStatusBadge } from "../components/SyncStatusBadge";
 import { getPartyKitHost } from "../lib/partyKitHost";
@@ -237,6 +238,9 @@ function RoomLiveSurface({
           <p className="collab-editor__loading">에디터 동기화 대기 중…</p>
         )}
       </div>
+      {supabase && (
+        <RoomFilePanel roomSlug={slug} supabase={supabase} />
+      )}
       {showDebug && <SyncDebugPanel provider={provider} ydoc={ydoc} room={slug} />}
     </div>
   );
