@@ -185,6 +185,65 @@ export function canPreviewRoomFile(
   return PREVIEWABLE_EXTENSIONS.has(ext);
 }
 
+/** 탐색기 아이콘 뷰용 파일 종류 */
+export type FileIconKind =
+  | "image"
+  | "pdf"
+  | "video"
+  | "audio"
+  | "archive"
+  | "spreadsheet"
+  | "presentation"
+  | "code"
+  | "text"
+  | "document";
+
+function fileExtension(originalName: string): string {
+  const base = originalName.trim().split(/[/\\]/).pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+}
+
+/** MIME·확장자로 아이콘 종류 결정 (Windows 탐색기 스타일) */
+export function getFileIconKind(mimeType: string, originalName: string): FileIconKind {
+  const mime = mimeType.toLowerCase();
+  const ext = fileExtension(originalName);
+
+  if (mime.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "bmp", "avif"].includes(ext)) {
+    return "image";
+  }
+  if (mime === "application/pdf" || ext === "pdf") return "pdf";
+  if (mime.startsWith("video/") || ["mp4", "webm", "mov", "mkv", "avi"].includes(ext)) return "video";
+  if (mime.startsWith("audio/") || ["mp3", "wav", "ogg", "flac", "aac"].includes(ext)) return "audio";
+  if (
+    ["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(ext) ||
+    mime.includes("zip") ||
+    mime.includes("compressed")
+  ) {
+    return "archive";
+  }
+  if (["xlsx", "xls", "csv"].includes(ext) || mime.includes("spreadsheet") || mime.includes("excel")) {
+    return "spreadsheet";
+  }
+  if (["pptx", "ppt"].includes(ext) || mime.includes("presentation") || mime.includes("powerpoint")) {
+    return "presentation";
+  }
+  if (
+    ["py", "js", "ts", "tsx", "jsx", "json", "xml", "yaml", "yml", "html", "css", "sql", "go", "rs"].includes(ext)
+  ) {
+    return "code";
+  }
+  if (["txt", "md", "log"].includes(ext) || mime.startsWith("text/")) return "text";
+  return "document";
+}
+
+/** 아이콘 위에 표시할 짧은 확장자 라벨 (최대 4자) */
+export function getFileIconLabel(originalName: string): string {
+  const ext = fileExtension(originalName);
+  if (!ext) return "FILE";
+  return ext.slice(0, 4).toUpperCase();
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

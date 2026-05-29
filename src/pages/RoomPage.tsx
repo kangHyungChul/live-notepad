@@ -239,7 +239,7 @@ function RoomLiveSurface({
         )}
       </div>
       {supabase && (
-        <RoomFilePanel roomSlug={slug} supabase={supabase} />
+        <RoomFilePanel roomSlug={slug} supabase={supabase} localGuestLabel={guestName} />
       )}
       {showDebug && <SyncDebugPanel provider={provider} ydoc={ydoc} room={slug} />}
     </div>

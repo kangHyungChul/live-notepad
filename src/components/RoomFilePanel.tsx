@@ -14,8 +14,15 @@ import {
   type RoomStorageUsage,
   uploadRoomFile,
 } from "../lib/roomFilesRepo";
-import { useRoomFilesRealtime } from "../hooks/useRoomFilesRealtime";
-import { RoomFilePreview } from "./RoomFilePreview";
+import {
+  mergePendingUploads,
+  useRoomFileUploadBroadcast,
+  type PendingUploadView,
+} from "../hooks/useRoomFileUploadBroadcast";
+import {
+  applyRoomFilesRealtimeChange,
+  useRoomFilesRealtime,
+} from "../hooks/useRoomFilesRealtime";
 
 type ActiveUpload = {
   id: string;
@@ -25,9 +32,14 @@ type ActiveUpload = {
   error?: string;
 };
 
+import { RoomFileIconTile } from "./RoomFileIconTile";
+import { RoomFilePreview } from "./RoomFilePreview";
+
 type Props = {
   roomSlug: string;
   supabase: SupabaseClient;
+  /** 다른 참가자에게 업로드 중 표시에 쓰는 이름 */
+  localGuestLabel: string;
 };
 
 /** ISO 날짜를 목록에 표시할 로컬 문자열로 변환 */
@@ -45,7 +57,8 @@ function formatFileDate(iso: string): string {
 /**
  * 방별 파일 패널: 드래그앤드롭 업로드, 진행률, 용량 표시, 미리보기, 다운로드, 삭제.
  */
-export function RoomFilePanel({ roomSlug, supabase }: Props) {
+export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
+  const clientIdRef = useRef(crypto.randomUUID());
   const inputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<RoomFileRow[]>([]);
   const [usage, setUsage] = useState<RoomStorageUsage | null>(null);
@@ -56,11 +69,52 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewRow, setPreviewRow] = useState<RoomFileRow | null>(null);
 
-  const refresh = useCallback(async () => {
+  const { remotePending, broadcast } = useRoomFileUploadBroadcast(
+    supabase,
+    roomSlug,
+    clientIdRef.current,
+    localGuestLabel,
+  );
+
+  const localPending: PendingUploadView[] = activeUploads.map((u) => ({
+    uploadId: u.id,
+    fileName: u.name,
+    percent: u.percent,
+    by: localGuestLabel,
+    isLocal: true,
+    status: u.status,
+    error: u.error,
+    updatedAt: Date.now(),
+  }));
+
+  const pendingUploads = mergePendingUploads(localPending, remotePending);
+  const showList = loading || files.length > 0 || pendingUploads.length > 0;
+
+  const lastBroadcastPercentRef = useRef<Map<string, number>>(new Map());
+
+  const emitUploadBroadcast = (
+    uploadId: string,
+    fileName: string,
+    percent: number,
+    phase: "start" | "progress" | "done" | "error",
+    error?: string,
+  ) => {
+    if (phase === "progress") {
+      const last = lastBroadcastPercentRef.current.get(uploadId) ?? -1;
+      if (percent - last < 5 && percent < 100) return;
+      lastBroadcastPercentRef.current.set(uploadId, percent);
+    }
+    if (phase === "done" || phase === "error") {
+      lastBroadcastPercentRef.current.delete(uploadId);
+    }
+    broadcast({ uploadId, fileName, percent, phase, error });
+  };
+
+  const refresh = useCallback(async (purgeExpired = false) => {
     setErr(null);
     try {
       const [rows, storage] = await Promise.all([
-        listRoomFiles(supabase, roomSlug),
+        listRoomFiles(supabase, roomSlug, { purgeExpired }),
         getRoomStorageUsage(supabase, roomSlug),
       ]);
       setFiles(rows);
@@ -73,11 +127,31 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
   }, [supabase, roomSlug]);
 
   useEffect(() => {
-    void refresh();
+    void refresh(true);
   }, [refresh]);
 
-  // 다른 탭·사용자가 업로드/삭제하면 목록을 다시 불러옵니다.
-  useRoomFilesRealtime(supabase, roomSlug, refresh);
+  // Realtime: 즉시 목록 반영 + 주기적 폴백(구독 끊김·마이그레이션 미적용 대비)
+  useRoomFilesRealtime(supabase, roomSlug, {
+    onChange: (change) => {
+      applyRoomFilesRealtimeChange(
+        change,
+        roomSlug,
+        setFiles,
+        setUsage,
+        setPreviewRow,
+      );
+    },
+    onSyncIssue: () => {
+      void refresh(false);
+    },
+  });
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void refresh(false);
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [refresh]);
 
   const processFiles = async (fileList: FileList | File[]) => {
     const items = Array.from(fileList);
@@ -90,6 +164,7 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
         ...prev,
         { id: uploadId, name: file.name, percent: 0, status: "uploading" },
       ]);
+      emitUploadBroadcast(uploadId, file.name, 0, "start");
 
       try {
         await uploadRoomFile(supabase, roomSlug, file, {
@@ -99,6 +174,7 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
                 u.id === uploadId ? { ...u, percent: p.percent } : u,
               ),
             );
+            emitUploadBroadcast(uploadId, file.name, p.percent, "progress");
           },
         });
         setActiveUploads((prev) =>
@@ -106,6 +182,7 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
             u.id === uploadId ? { ...u, percent: 100, status: "done" } : u,
           ),
         );
+        emitUploadBroadcast(uploadId, file.name, 100, "done");
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setActiveUploads((prev) =>
@@ -113,11 +190,12 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
             u.id === uploadId ? { ...u, status: "error", error: msg } : u,
           ),
         );
+        emitUploadBroadcast(uploadId, file.name, 0, "error", msg);
         setErr(msg);
       }
     }
 
-    await refresh();
+    await refresh(false);
     window.setTimeout(() => {
       setActiveUploads((prev) => prev.filter((u) => u.status === "uploading"));
     }, 2500);
@@ -167,6 +245,7 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
     try {
       await deleteRoomFile(supabase, row);
       setFiles((prev) => prev.filter((f) => f.id !== row.id));
+      setPreviewRow((prev) => (prev?.id === row.id ? null : prev));
       setUsage((prev) =>
         prev
           ? {
@@ -246,102 +325,77 @@ export function RoomFilePanel({ roomSlug, supabase }: Props) {
         />
       </div>
 
-      {activeUploads.length > 0 && (
-        <ul className="room-files__uploads" aria-live="polite">
-          {activeUploads.map((u) => (
-            <li key={u.id} className="room-files__upload-item">
-              <div className="room-files__upload-meta">
-                <span className="room-files__upload-name">{u.name}</span>
-                <span className="muted small">
-                  {u.status === "uploading" && `${u.percent}%`}
-                  {u.status === "done" && "완료"}
-                  {u.status === "error" && (u.error ?? "실패")}
-                </span>
-              </div>
-              <div
-                className="room-files__progress"
-                role="progressbar"
-                aria-valuenow={u.percent}
-                aria-valuemin={0}
-                aria-valuemax={100}
-              >
-                <div
-                  className={`room-files__progress-bar room-files__progress-bar--${u.status}`}
-                  style={{ width: `${u.status === "error" ? 100 : u.percent}%` }}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
       {err && <p className="banner error room-files__err">{err}</p>}
 
-      {loading ? (
-        <p className="muted small">파일 목록 불러오는 중…</p>
-      ) : files.length === 0 ? (
+      {!showList ? (
         <p className="muted small room-files__empty">업로드된 파일이 없습니다.</p>
       ) : (
-        <ul className="room-files__list">
-          {files.map((row) => {
-            const showPreview = canPreviewRoomFile(
-              row.mime_type,
-              row.original_name,
-              row.size_bytes,
-            );
-            return (
-              <li key={row.id} className="room-files__item">
-                <div className="room-files__item-meta">
-                  <span className="room-files__item-name" title={row.original_name}>
-                    {row.original_name}
+        <div className="room-files__browser">
+          {pendingUploads.length > 0 && (
+            <ul className="room-files__pending-list" aria-live="polite">
+              {pendingUploads.map((u) => (
+                <li key={`pending-${u.uploadId}`} className="room-files__pending-item">
+                  <span className="room-files__icon-shape room-files__icon-shape--document room-files__icon-shape--pending">
+                    <span className="room-files__icon-fold" />
+                    <span className="room-files__icon-ext">…</span>
                   </span>
-                  <span className="muted small">
-                    {formatBytes(row.size_bytes)}
-                  </span>
-                  <span className="muted small room-files__dates">
-                    업로드 {formatFileDate(row.created_at)} · 만료{" "}
-                    {formatFileDate(row.expires_at)}
-                  </span>
-                </div>
-                <div className="room-files__item-actions">
-                  {showPreview && (
-                    <button
-                      type="button"
-                      className="btn small-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPreviewRow(row);
-                      }}
-                    >
-                      미리보기
-                    </button>
+                  <div className="room-files__pending-meta">
+                    <span className="room-files__pending-name" title={u.fileName}>
+                      {u.fileName}
+                    </span>
+                    <span className="room-files__status-badge room-files__status-badge--uploading">
+                      {u.status === "uploading" && "업로드 중"}
+                      {u.status === "done" && "완료"}
+                      {u.status === "error" && "실패"}
+                    </span>
+                    <span className="muted small">
+                      {!u.isLocal && u.status === "uploading" && `${u.by} · `}
+                      {u.status === "uploading" && `${u.percent}%`}
+                      {u.status === "error" && (u.error ?? "실패")}
+                    </span>
+                    {u.status === "uploading" && (
+                      <div
+                        className="room-files__progress room-files__progress--inline"
+                        role="progressbar"
+                        aria-valuenow={u.percent}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                      >
+                        <div
+                          className="room-files__progress-bar room-files__progress-bar--uploading"
+                          style={{ width: `${u.percent}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {loading && files.length === 0 ? (
+            <p className="muted small room-files__empty">파일 목록 불러오는 중…</p>
+          ) : files.length > 0 ? (
+            <div className="room-files__icon-grid" role="list">
+              {files.map((row) => (
+                <RoomFileIconTile
+                  key={row.id}
+                  row={row}
+                  showPreview={canPreviewRoomFile(
+                    row.mime_type,
+                    row.original_name,
+                    row.size_bytes,
                   )}
-                  <button
-                    type="button"
-                    className="btn small-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void onDownload(row);
-                    }}
-                  >
-                    다운로드
-                  </button>
-                  <button
-                    type="button"
-                    className="btn small-btn danger"
-                    disabled={deletingId === row.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void onDelete(row);
-                    }}
-                  >
-                    {deletingId === row.id ? "삭제 중…" : "삭제"}
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                  deleting={deletingId === row.id}
+                  formatDate={formatFileDate}
+                  onPreview={() => setPreviewRow(row)}
+                  onDownload={() => void onDownload(row)}
+                  onDelete={() => void onDelete(row)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
       )}
 
       {previewRow && (

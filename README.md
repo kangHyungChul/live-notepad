@@ -81,6 +81,7 @@ npm run db:push
 - 업로드 파일 **3일 후 자동 삭제** (`pg_cron` 매시 정각 + 목록 조회 시 `purge_expired_room_files`)
 - `005` 적용 전: Supabase 대시보드 → **Database → Extensions → pg_cron** 활성화
 - `006`: 방 파일 목록 **실시간 동기화** (`room_files` Realtime publication)
+- `007`: DELETE Realtime 필터용 **REPLICA IDENTITY FULL**
 
 ---
 

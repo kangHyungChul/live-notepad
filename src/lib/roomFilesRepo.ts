@@ -62,8 +62,11 @@ export async function getRoomStorageUsage(
 export async function listRoomFiles(
   supabase: SupabaseClient,
   roomSlug: string,
+  options?: { purgeExpired?: boolean },
 ): Promise<RoomFileRow[]> {
-  await purgeExpiredRoomFiles(supabase);
+  if (options?.purgeExpired !== false) {
+    await purgeExpiredRoomFiles(supabase);
+  }
   const { data, error } = await supabase
     .from("room_files")
     .select("*")
@@ -244,17 +247,20 @@ export async function downloadRoomFile(
 }
 
 /**
- * Storage 객체 + 메타 행 삭제.
+ * 메타 행 삭제 후 Storage 객체 삭제.
+ * DB 먼저 삭제해야 Realtime DELETE 가 다른 클라이언트에 즉시 전파됩니다.
  */
 export async function deleteRoomFile(
   supabase: SupabaseClient,
   row: RoomFileRow,
 ): Promise<void> {
+  const { error } = await supabase.from("room_files").delete().eq("id", row.id);
+  if (error) throw error;
+
   const { error: storageErr } = await supabase.storage
     .from(BUCKET)
     .remove([row.storage_path]);
-  if (storageErr) throw storageErr;
-
-  const { error } = await supabase.from("room_files").delete().eq("id", row.id);
-  if (error) throw error;
+  if (storageErr) {
+    console.warn("[room-files] Storage 객체 삭제 실패(메타는 이미 삭제됨):", storageErr.message);
+  }
 }
