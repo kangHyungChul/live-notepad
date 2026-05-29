@@ -9,6 +9,7 @@ import {
   listRooms,
   type RoomListItem,
 } from "../lib/roomsRepo";
+import { toErrorMessage } from "../lib/supabaseErrors";
 
 /**
  * 랜딩: 방 목록·새 방 만들기·코드로 입장.
@@ -32,7 +33,7 @@ export function HomePage() {
       const rows = await listRooms(supabase);
       setRooms(rows);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(toErrorMessage(e));
     } finally {
       setListLoading(false);
     }
@@ -48,7 +49,7 @@ export function HomePage() {
       })
       .catch((e) => {
         if (!cancelled) {
-          setErr(e instanceof Error ? e.message : String(e));
+          setErr(toErrorMessage(e));
         }
       })
       .finally(() => {
@@ -73,7 +74,7 @@ export function HomePage() {
       await refreshRooms();
       navigate(`/room/${slug}`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(toErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -103,7 +104,7 @@ export function HomePage() {
       await deleteRoomBySlug(supabase, slug);
       setRooms((prev) => prev.filter((r) => r.slug !== slug));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(toErrorMessage(e));
     } finally {
       setDeletingSlug(null);
     }

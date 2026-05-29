@@ -5,6 +5,7 @@ import {
   MAX_ROOM_STORAGE_BYTES,
   validateUploadFile,
 } from "./filePolicy";
+import { throwIfSupabaseError } from "./supabaseErrors";
 
 /** Supabase Storage 버킷 ID (004_room_files.sql 과 동일) */
 const BUCKET = "room-files";
@@ -49,12 +50,79 @@ export function computeRoomStorageUsageFromFiles(files: RoomFileRow[]): RoomStor
   return { usedBytes, limitBytes: MAX_ROOM_STORAGE_BYTES };
 }
 
+/** Supabase Storage API 로 객체를 일괄 삭제 (100개씩 분할) */
+async function removeStoragePaths(
+  supabase: SupabaseClient,
+  paths: string[],
+): Promise<void> {
+  if (paths.length === 0) return;
+
+  const chunkSize = 100;
+  for (let i = 0; i < paths.length; i += chunkSize) {
+    const chunk = paths.slice(i, i + chunkSize);
+    const { error } = await supabase.storage.from(BUCKET).remove(chunk);
+    if (error) {
+      // 객체가 이미 없을 수 있음 — DB 메타 정리는 이어서 진행
+      console.warn("[room-files] Storage 일괄 삭제 일부 실패:", error.message);
+    }
+  }
+}
+
 /**
- * 만료된 파일 메타·Storage 객체를 DB 함수로 정리합니다.
+ * 만료된 파일: Storage API 로 객체 삭제 후 room_files 메타 삭제.
+ * (DB 트리거·cron 은 storage.objects 직접 DELETE 가 불가하므로 클라이언트에서 처리)
  */
 export async function purgeExpiredRoomFiles(supabase: SupabaseClient): Promise<void> {
-  const { error } = await supabase.rpc("purge_expired_room_files");
-  if (error) throw error;
+  const { data, error } = await supabase
+    .from("room_files")
+    .select("*")
+    .lt("expires_at", new Date().toISOString());
+  throwIfSupabaseError(error);
+
+  const rows = (data ?? []) as RoomFileRow[];
+  if (rows.length === 0) return;
+
+  await removeStoragePaths(
+    supabase,
+    rows.map((row) => row.storage_path),
+  );
+
+  const { error: delErr } = await supabase
+    .from("room_files")
+    .delete()
+    .in(
+      "id",
+      rows.map((row) => row.id),
+    );
+  throwIfSupabaseError(delErr);
+}
+
+/**
+ * 방 삭제 전: 해당 방의 모든 파일을 Storage API + room_files 에서 제거합니다.
+ */
+export async function deleteAllRoomFilesForRoom(
+  supabase: SupabaseClient,
+  roomSlug: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("room_files")
+    .select("*")
+    .eq("room_slug", roomSlug);
+  throwIfSupabaseError(error);
+
+  const rows = (data ?? []) as RoomFileRow[];
+  if (rows.length === 0) return;
+
+  await removeStoragePaths(
+    supabase,
+    rows.map((row) => row.storage_path),
+  );
+
+  const { error: delErr } = await supabase
+    .from("room_files")
+    .delete()
+    .eq("room_slug", roomSlug);
+  throwIfSupabaseError(delErr);
 }
 
 /**

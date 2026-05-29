@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import * as Y from "yjs";
+import { deleteAllRoomFilesForRoom } from "./roomFilesRepo";
+import { throwIfSupabaseError } from "./supabaseErrors";
+import { clearYXmlFragmentIfExists, LEGACY_YJS_FRAGMENTS } from "./blocknoteYjs";
 import { decodeBase64ToUint8Array, encodeYUpdateAsBase64 } from "./yjsSnapshot";
 
 export type RoomRow = {
@@ -28,7 +31,7 @@ export async function fetchRoomBySlug(
     .select("slug,title,y_snapshot")
     .eq("slug", slug)
     .maybeSingle();
-  if (error) throw error;
+  throwIfSupabaseError(error);
   return data as RoomRow | null;
 }
 
@@ -41,7 +44,7 @@ export async function insertRoom(
   title: string,
 ): Promise<void> {
   const { error } = await supabase.from("rooms").insert({ slug, title });
-  if (error) throw error;
+  throwIfSupabaseError(error);
 }
 
 /**
@@ -57,25 +60,26 @@ export async function listRooms(
     .select("slug,title,created_at,updated_at")
     .order("updated_at", { ascending: false })
     .limit(limit);
-  if (error) throw error;
+  throwIfSupabaseError(error);
   return (data ?? []) as RoomListItem[];
 }
 
 /**
  * 방 행 삭제. 현재 RLS는 익명 삭제 허용(MVP).
- * 추후: `owner_user_id = auth.uid()` 또는 관리자 역할만 delete 허용하도록 정책 교체.
+ * Storage 객체는 DB 트리거가 아닌 Storage API 로 먼저 지운 뒤 rooms 행을 삭제합니다.
  */
 export async function deleteRoomBySlug(
   supabase: SupabaseClient,
   slug: string,
 ): Promise<void> {
+  await deleteAllRoomFilesForRoom(supabase, slug);
   const { error } = await supabase.from("rooms").delete().eq("slug", slug);
-  if (error) throw error;
+  throwIfSupabaseError(error);
 }
 
 /**
  * Yjs 전체 상태 인코딩을 rooms.y_snapshot에 upsert.
- * `onConflict: slug`로 동일 방에 대한 덮어쓰기를 보장합니다.
+ * 편집 중인 Y.Doc 은 건드리지 않고, 복제본에서만 레거시 fragment 를 제거합니다.
  */
 export async function upsertRoomYjsSnapshot(
   supabase: SupabaseClient,
@@ -83,18 +87,26 @@ export async function upsertRoomYjsSnapshot(
   title: string,
   ydoc: Y.Doc,
 ): Promise<void> {
-  const update = Y.encodeStateAsUpdate(ydoc);
-  const b64 = encodeYUpdateAsBase64(update);
-  const { error } = await supabase.from("rooms").upsert(
-    {
-      slug,
-      title,
-      y_snapshot: b64,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "slug" },
-  );
-  if (error) throw error;
+  const snapshotDoc = new Y.Doc();
+  try {
+    Y.applyUpdate(snapshotDoc, Y.encodeStateAsUpdate(ydoc));
+    for (const name of LEGACY_YJS_FRAGMENTS) {
+      clearYXmlFragmentIfExists(snapshotDoc, name);
+    }
+    const b64 = encodeYUpdateAsBase64(Y.encodeStateAsUpdate(snapshotDoc));
+    const { error } = await supabase.from("rooms").upsert(
+      {
+        slug,
+        title,
+        y_snapshot: b64,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "slug" },
+    );
+    throwIfSupabaseError(error);
+  } finally {
+    snapshotDoc.destroy();
+  }
 }
 
 /**

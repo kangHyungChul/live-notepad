@@ -4,7 +4,7 @@ export function randomGuestLabel(): string {
   return `Guest-${n}`;
 }
 
-/** CollaborationCaret에 넣을 색상 — 서로 구분되도록 고정 팔레트에서 순환 선택 */
+/** BlockNote 협업 커서·접속자 목록에 넣을 색상 — 서로 구분되도록 고정 팔레트에서 선택 */
 const PALETTE = [
   "#2563eb",
   "#dc2626",

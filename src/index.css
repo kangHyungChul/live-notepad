@@ -253,59 +253,90 @@ code {
   border-radius: 12px;
   background: var(--surface);
   min-height: 50vh;
+  overflow: hidden;
 }
 
-.collab-editor__loading {
+.blocknote-editor__loading {
   padding: 1rem;
   margin: 0;
   color: var(--muted);
 }
 
-/* Tiptap / ProseMirror 기본 타이포 */
-.collab-editor__surface {
+/* BlockNote: min-height 는 본체 컨테이너(bn-container)에만 — portalElement 형제 div 는 제외 */
+.editor-shell .bn-container.blocknote-collab-editor {
   min-height: 48vh;
-  padding: 1rem 1.25rem;
-  outline: none;
 }
 
-.collab-editor__surface p {
-  margin: 0.35rem 0;
-}
-
-.collab-editor__surface ul,
-.collab-editor__surface ol {
-  padding-left: 1.25rem;
-}
-
-/* CollaborationCaret 기본 스타일(확장이 DOM을 조립하는 방식에 맞춤) */
-.collaboration-carets__caret {
-  position: relative;
-  margin-left: -1px;
-  margin-right: -1px;
+/* BlockNote portalElement — 슬래시 메뉴·툴바 등 플로팅 UI 마운트용, 레이아웃 공간은 차지하지 않음 */
+.editor-shell .bn-root:not(.bn-container) {
+  min-height: 0;
+  height: 0;
+  overflow: visible;
   pointer-events: none;
-  word-break: normal;
-  border-left: 1px solid currentColor;
-  border-right: 1px solid currentColor;
 }
 
-.collaboration-carets__label {
-  position: absolute;
-  top: -1.4rem;
-  left: -1px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  line-height: 1;
-  user-select: none;
+.editor-shell .bn-root:not(.bn-container) > * {
+  pointer-events: auto;
+}
+
+.editor-shell .bn-editor {
+  padding: 1rem 1.25rem 2rem;
+}
+
+/* 접속자 목록 (툴바) */
+.room-presence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  max-width: min(100%, 28rem);
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem 0.2rem 0.65rem;
+  background: color-mix(in srgb, var(--surface) 90%, var(--bg));
+}
+
+.room-presence__count {
+  color: var(--muted);
   white-space: nowrap;
-  color: #fff;
-  padding: 0.15rem 0.35rem;
-  border-radius: 4px 4px 4px 0;
+  font-weight: 600;
 }
 
-.collaboration-carets__selection {
-  margin-left: -1px;
-  margin-right: -1px;
-  pointer-events: none;
+.room-presence__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.room-presence__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.room-presence__chip--self {
+  font-weight: 600;
+}
+
+.room-presence__dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.room-presence__name {
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 방 파일 패널 */
