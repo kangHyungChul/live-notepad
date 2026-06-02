@@ -1,15 +1,23 @@
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteSchema, createCodeBlockSpec } from "@blocknote/core";
 import { ko } from "@blocknote/core/locales";
 import { useCreateBlockNote } from "@blocknote/react";
+import { codeBlockOptions } from "@blocknote/code-block";
 import type { Doc } from "yjs";
 import type YPartyKitProvider from "y-partykit/provider";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import {
   createBlockNotePasteHandler,
   useBlockNoteCopyCutFix,
   type BlockNoteInternalClipboard,
 } from "../hooks/useBlockNoteCopyCutFix";
 import { BLOCKNOTE_YJS_FRAGMENT } from "../lib/blocknoteYjs";
+
+const editorSchema = BlockNoteSchema.create().extend({
+  blockSpecs: {
+    codeBlock: createCodeBlockSpec(codeBlockOptions),
+  },
+});
 
 type BlockNoteCollabEditorProps = {
   ydoc: Doc;
@@ -32,15 +40,14 @@ export function BlockNoteCollabEditor({
 }: BlockNoteCollabEditorProps) {
   const fragment = ydoc.getXmlFragment(BLOCKNOTE_YJS_FRAGMENT);
 
-  const providerRef = useRef(provider);
-  providerRef.current = provider;
-
-  const internalClipboardRef = useRef<BlockNoteInternalClipboard>({
-    blocknoteHtml: null,
-    blocks: null,
-    readyForInternalPaste: false,
-  });
-  const internalClipboard = internalClipboardRef.current;
+  const internalClipboard = useMemo<BlockNoteInternalClipboard>(
+    () => ({
+      blocknoteHtml: null,
+      blocks: null,
+      readyForInternalPaste: false,
+    }),
+    [],
+  );
 
   const pasteHandler = useMemo(
     () => createBlockNotePasteHandler(internalClipboard),
@@ -49,11 +56,12 @@ export function BlockNoteCollabEditor({
 
   const editor = useCreateBlockNote(
     {
+      schema: editorSchema,
       dictionary: ko,
       disableExtensions: ["copyToClipboard"],
       pasteHandler,
       collaboration: {
-        provider: providerRef.current,
+        provider,
         fragment,
         user: {
           name: localUserName,
@@ -61,7 +69,7 @@ export function BlockNoteCollabEditor({
         },
       },
     },
-    [ydoc, localUserName, localUserColor, pasteHandler],
+    [ydoc, provider, localUserName, localUserColor, pasteHandler],
   );
 
   useBlockNoteCopyCutFix(editor, internalClipboard);
