@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import * as Y from "yjs";
 import useYProvider from "y-partykit/react";
 import { BlockNoteCollabEditor } from "../components/BlockNoteCollabEditor";
+import { RoomNotFoundPage } from "../components/RoomNotFoundPage";
 import { RoomFilePanel } from "../components/RoomFilePanel";
 import { RoomPresencePanel } from "../components/RoomPresencePanel";
 import { SyncDebugPanel } from "../components/SyncDebugPanel";
@@ -15,21 +16,25 @@ import {
   type RoomRow,
 } from "../lib/roomsRepo";
 import { usePartyKitSyncReady } from "../hooks/usePartyKitCollabEditable";
+import { usePartyKitPageHideAwareness } from "../hooks/usePartyKitPageHideAwareness";
+import { useYjsReconnectRecovery } from "../hooks/useYjsReconnectRecovery";
+import { useRoomTitleCollaboration } from "../hooks/useRoomTitleCollaboration";
 import { useYjsSupabasePersistence } from "../hooks/useYjsSupabasePersistence";
 import {
-  prepareYDocForBlockNote,
+  shouldSeedYDocFromSupabaseSnapshot,
   snapshotLooksLikeBlockNoteContent,
-  yDocHasBlockNoteContent,
 } from "../lib/blocknoteYjs";
-import { randomGuestColor, randomGuestLabel } from "../lib/randomGuest";
+import { waitForCollaborationBootstrap } from "../lib/yDocBootstrap";
+import { guestColorFromName, randomGuestLabel } from "../lib/randomGuest";
 
 /**
  * 단일 방 UI.
  *
  * 동기화 순서(중요):
- * 1) Supabase 행만 조회(스냅샷은 Y.Doc 에 아직 적용하지 않음)
+ * 1) Supabase 행 조회 — 없으면 에러 페이지 (방 생성은 홈「새 메모장 만들기」만)
  * 2) 빈 Y.Doc 으로 PartyKit 연결 → `provider.synced` 대기
- * 3) synced 후 Supabase 스냅샷 merge → 레거시 Tiptap fragment 제거 → BlockNote 마운트
+ * 3) synced 후 PartyKit·awareness 확인 → 서버에 본문 없고 혼자 빈 방일 때만 Supabase 스냅샷 merge → BlockNote 마운트
+ *    (PartyKit cold start 시 서버가 DB 스냅샷을 load 하므로, 대부분 클라이언트 merge 는 생략됨)
  * 4) 이후 편집 내용은 Yjs → Supabase 스냅샷으로 저장
  *
  * 연결 전에 스냅샷을 넣으면 Yjs 핸드셰이크가 깨져 기기마다 `remote-like: 0` 이 됩니다.
@@ -56,10 +61,12 @@ function RoomPageInner({ slug }: { slug: string }) {
   const ydoc = useMemo(() => new Y.Doc(), []);
   const [hydrated, setHydrated] = useState(false);
   const [initialRoom, setInitialRoom] = useState<RoomRow | null>(null);
+  const [roomNotFound, setRoomNotFound] = useState(false);
   const [title, setTitle] = useState("메모장");
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  // 닉네임은 탭마다 랜덤, 색은 닉네임 해시로 고정 → 모든 접속자 화면에서 동일
   const [guestName] = useState(() => randomGuestLabel());
-  const [guestColor] = useState(() => randomGuestColor());
+  const guestColor = guestColorFromName(guestName);
 
   useEffect(() => {
     return () => {
@@ -71,14 +78,18 @@ function RoomPageInner({ slug }: { slug: string }) {
     let cancelled = false;
     (async () => {
       try {
-        if (supabase) {
-          const row = await fetchRoomBySlug(supabase, slug);
-          if (cancelled) return;
-          if (row) {
-            setInitialRoom(row);
-            setTitle(row.title || "메모장");
-          }
+        if (!supabase) {
+          if (!cancelled) setLoadErr("Supabase가 설정되지 않아 방을 열 수 없습니다.");
+          return;
         }
+        const row = await fetchRoomBySlug(supabase, slug);
+        if (cancelled) return;
+        if (!row) {
+          setRoomNotFound(true);
+          return;
+        }
+        setInitialRoom(row);
+        setTitle(row.title || "메모장");
       } catch (e) {
         if (!cancelled) {
           setLoadErr(e instanceof Error ? e.message : String(e));
@@ -97,6 +108,19 @@ function RoomPageInner({ slug }: { slug: string }) {
       <div className="page">
         <p>문서 불러오는 중…</p>
         {loadErr && <p className="banner error">{loadErr}</p>}
+      </div>
+    );
+  }
+
+  if (roomNotFound) {
+    return <RoomNotFoundPage slug={slug} />;
+  }
+
+  if (loadErr || !initialRoom) {
+    return (
+      <div className="page">
+        <p className="banner error">{loadErr ?? "방 정보를 불러올 수 없습니다."}</p>
+        <Link to="/">홈으로</Link>
       </div>
     );
   }
@@ -129,7 +153,7 @@ function RoomLiveSurface({
 }: {
   slug: string;
   ydoc: Y.Doc;
-  initialRoom: RoomRow | null;
+  initialRoom: RoomRow;
   title: string;
   onTitleChange: (t: string) => void;
   guestName: string;
@@ -142,34 +166,81 @@ function RoomLiveSurface({
     host,
     room: slug,
     doc: ydoc,
+    // 같은 방 여러 탭이 BroadcastChannel 로 Yjs 를 직접 공유하면
+    // 삭제·구버전 update 가 되살아날 수 있어 WebSocket(PartyKit) 경로만 사용
+    options: { disableBc: true },
   });
+
+  usePartyKitPageHideAwareness(provider);
 
   const { ready: partyReady, retrying, gaveUp } = usePartyKitSyncReady(provider, {
     ydoc,
   });
 
   const editorGateRef = useRef(false);
+  const hadRemotePartyKitUpdateRef = useRef(false);
   const [contentReady, setContentReady] = useState(false);
 
-  // Yjs step2 완료(provider.synced) 후에만 스냅샷 merge·에디터 마운트
+  // PartyKit 에서 다른 클라이언트/서버 update 가 왔는지 추적 (신규 입장 시 DB 스냅샷 merge 판단)
   useEffect(() => {
-    if (!provider.synced || editorGateRef.current) return;
-    editorGateRef.current = true;
+    const onUpdate = (_update: Uint8Array, origin: unknown) => {
+      if (origin === provider) {
+        hadRemotePartyKitUpdateRef.current = true;
+      }
+    };
+    ydoc.on("update", onUpdate);
+    return () => {
+      ydoc.off("update", onUpdate);
+    };
+  }, [ydoc, provider]);
 
-    prepareYDocForBlockNote(ydoc);
-    const snapshotUsable =
-      Boolean(initialRoom?.y_snapshot) &&
-      snapshotLooksLikeBlockNoteContent(initialRoom?.y_snapshot ?? null);
-    // PartyKit 에 이미 본문이 있으면 Supabase 스냅샷을 merge 하지 않음 (삭제·최신 편집 되살림 방지)
-    if (initialRoom && snapshotUsable && !yDocHasBlockNoteContent(ydoc)) {
-      applyStoredSnapshotToDoc(ydoc, initialRoom);
-    }
-    prepareYDocForBlockNote(ydoc);
+  // partyReady(synced || 원격 update 수신) 이후 bootstrap — provider.synced 단독 조건과 이중 게이트 제거
+  useEffect(() => {
+    if (editorGateRef.current) return;
+    if (!partyReady) return;
 
-    setContentReady(true);
-  }, [provider.synced, provider.wsconnected, initialRoom, ydoc, slug, partyReady, provider]);
+    let cancelled = false;
+
+    void (async () => {
+      const bootstrap = await waitForCollaborationBootstrap(
+        ydoc,
+        provider,
+        () => hadRemotePartyKitUpdateRef.current,
+        () => cancelled || editorGateRef.current,
+      );
+
+      if (cancelled || editorGateRef.current) return;
+
+      const snapshotUsable =
+        Boolean(initialRoom.y_snapshot) &&
+        snapshotLooksLikeBlockNoteContent(initialRoom.y_snapshot ?? null);
+
+      const maySeedFromDb = shouldSeedYDocFromSupabaseSnapshot(ydoc, {
+        hadRemotePartyKitUpdate: bootstrap.hadRemotePartyKitUpdate,
+        otherAwarenessClientCount: bootstrap.otherAwarenessClientCount,
+      });
+
+      if (initialRoom && snapshotUsable && maySeedFromDb) {
+        applyStoredSnapshotToDoc(ydoc, initialRoom);
+      }
+
+      editorGateRef.current = true;
+      setContentReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [partyReady, initialRoom, ydoc, slug, provider]);
 
   const editorReady = contentReady;
+
+  const handleTitleChange = useRoomTitleCollaboration(
+    ydoc,
+    title,
+    onTitleChange,
+    editorReady,
+  );
 
   useYjsSupabasePersistence(
     ydoc,
@@ -177,7 +248,10 @@ function RoomLiveSurface({
     title,
     supabase,
     Boolean(supabase) && editorReady,
+    provider,
   );
+
+  useYjsReconnectRecovery(ydoc, provider, editorReady);
 
   const showDebug =
     typeof window !== "undefined" &&
@@ -207,7 +281,7 @@ function RoomLiveSurface({
           <input
             className="input title-input"
             value={title}
-            onChange={(e) => onTitleChange(e.target.value)}
+            onChange={(e) => handleTitleChange(e.target.value)}
             aria-label="메모장 제목"
           />
         </div>

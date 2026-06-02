@@ -5,6 +5,7 @@ import { getSupabaseBrowserClient } from "../lib/supabaseClient";
 import { generateRoomSlug } from "../lib/roomSlug";
 import {
   deleteRoomBySlug,
+  fetchRoomBySlug,
   insertRoom,
   listRooms,
   type RoomListItem,
@@ -13,7 +14,7 @@ import { toErrorMessage } from "../lib/supabaseErrors";
 
 /**
  * 랜딩: 방 목록·새 방 만들기·코드로 입장.
- * Supabase가 없으면 새 방 생성·목록·삭제는 막고, 코드로 입장(PartyKit만)은 허용합니다.
+ * Supabase가 없으면 새 방 생성·목록·삭제·코드 입장을 막습니다.
  */
 export function HomePage() {
   const navigate = useNavigate();
@@ -80,7 +81,7 @@ export function HomePage() {
     }
   };
 
-  const onJoin = (e: React.FormEvent) => {
+  const onJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
     const slug = joinCode.trim();
@@ -88,7 +89,25 @@ export function HomePage() {
       setErr("방 코드를 입력하세요.");
       return;
     }
-    navigate(`/room/${slug}`);
+    if (!supabase) {
+      setErr("Supabase 환경 변수가 없어 코드 입장을 할 수 없습니다.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const row = await fetchRoomBySlug(supabase, slug);
+      if (!row) {
+        setErr(
+          "존재하지 않는 방 코드입니다. 홈에서 「새 메모장 만들기」로 만든 방의 코드·링크를 사용하세요.",
+        );
+        return;
+      }
+      navigate(`/room/${slug}`);
+    } catch (joinErr) {
+      setErr(toErrorMessage(joinErr));
+    } finally {
+      setBusy(false);
+    }
   };
   const onDeleteRoom = async (slug: string, title: string) => {
     if (!supabase) return;
@@ -154,8 +173,8 @@ export function HomePage() {
             onChange={(ev) => setJoinCode(ev.target.value)}
             autoComplete="off"
           />
-          <button type="submit" className="btn">
-            입장
+          <button type="submit" className="btn" disabled={busy}>
+            {busy ? "확인 중…" : "입장"}
           </button>
         </form>
       </section>

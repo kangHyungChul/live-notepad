@@ -2,6 +2,11 @@
 import "./lib/patchUnloadPolicy";
 import { installRenderSpecPatch } from "./lib/patchRenderSpec";
 import { createRoot } from "react-dom/client";
+// BlockNote 스타일 — react 쪽에 .bn-root 테마·헤드라인·사이드메뉴 CSS 가 있음
+import "@blocknote/core/fonts/inter.css";
+import "@blocknote/core/style.css";
+import "@blocknote/react/style.css";
+import "@blocknote/mantine/style.css";
 import "./index.css";
 import App from "./App.tsx";
 

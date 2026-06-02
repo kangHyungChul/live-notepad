@@ -20,7 +20,7 @@ export type RoomListItem = {
 };
 
 /**
- * 방 단건 조회. 없으면 null (신규 방으로 취급).
+ * 방 단건 조회. 없으면 null.
  */
 export async function fetchRoomBySlug(
   supabase: SupabaseClient,
@@ -74,6 +74,24 @@ export async function deleteRoomBySlug(
 ): Promise<void> {
   await deleteAllRoomFilesForRoom(supabase, slug);
   const { error } = await supabase.from("rooms").delete().eq("slug", slug);
+  throwIfSupabaseError(error);
+}
+
+/**
+ * 방 제목만 갱신합니다. y_snapshot 은 건드리지 않습니다.
+ */
+export async function updateRoomTitle(
+  supabase: SupabaseClient,
+  slug: string,
+  title: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("rooms")
+    .update({
+      title,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("slug", slug);
   throwIfSupabaseError(error);
 }
 

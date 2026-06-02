@@ -133,6 +133,26 @@ export function SyncDebugPanel({ provider, ydoc, room }: Props) {
         <div>
           bc: {String(providerAny.bcconnected ?? "-")} / disableBc: {String(providerAny.disableBc ?? "-")}
         </div>
+        <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn small-btn"
+            onClick={() => provider.disconnect()}
+          >
+            WS 끊기(테스트)
+          </button>
+          <button
+            type="button"
+            className="btn small-btn"
+            onClick={() => provider.connect()}
+          >
+            WS 재연결(테스트)
+          </button>
+        </div>
+        <p className="muted small" style={{ marginTop: 8, marginBottom: 0 }}>
+          PartyKit만 끊고 테스트: 위 버튼 사용. DevTools → Network에서 PartyKit 호스트(예: localhost:1999)
+          WebSocket 차단 후 해제해도 됩니다.
+        </p>
       </div>
     </div>
   );

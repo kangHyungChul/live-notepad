@@ -1,13 +1,14 @@
 import { BlockNoteView } from "@blocknote/mantine";
 import { ko } from "@blocknote/core/locales";
 import { useCreateBlockNote } from "@blocknote/react";
-import "@blocknote/core/fonts/inter.css";
-import "@blocknote/core/style.css";
-import "@blocknote/mantine/style.css";
 import type { Doc } from "yjs";
 import type YPartyKitProvider from "y-partykit/provider";
-import { useMemo } from "react";
-import { useBlockNoteCopyFallback } from "../hooks/useBlockNoteCopyFallback";
+import { useMemo, useRef } from "react";
+import {
+  createBlockNotePasteHandler,
+  useBlockNoteCopyCutFix,
+  type BlockNoteInternalClipboard,
+} from "../hooks/useBlockNoteCopyCutFix";
 import { BLOCKNOTE_YJS_FRAGMENT } from "../lib/blocknoteYjs";
 
 type BlockNoteCollabEditorProps = {
@@ -20,7 +21,7 @@ type BlockNoteCollabEditorProps = {
 
 /**
  * BlockNote + Yjs 협업 에디터.
- * BlockNote PartyKit 공식 예제와 동일한 최소 옵션만 사용합니다.
+ * copy/cut: useBlockNoteCopyCutFix / paste: createBlockNotePasteHandler
  */
 export function BlockNoteCollabEditor({
   ydoc,
@@ -31,11 +32,28 @@ export function BlockNoteCollabEditor({
 }: BlockNoteCollabEditorProps) {
   const fragment = ydoc.getXmlFragment(BLOCKNOTE_YJS_FRAGMENT);
 
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
+
+  const internalClipboardRef = useRef<BlockNoteInternalClipboard>({
+    blocknoteHtml: null,
+    blocks: null,
+    readyForInternalPaste: false,
+  });
+  const internalClipboard = internalClipboardRef.current;
+
+  const pasteHandler = useMemo(
+    () => createBlockNotePasteHandler(internalClipboard),
+    [internalClipboard],
+  );
+
   const editor = useCreateBlockNote(
     {
       dictionary: ko,
+      disableExtensions: ["copyToClipboard"],
+      pasteHandler,
       collaboration: {
-        provider,
+        provider: providerRef.current,
         fragment,
         user: {
           name: localUserName,
@@ -43,17 +61,10 @@ export function BlockNoteCollabEditor({
         },
       },
     },
-    [ydoc, provider, localUserName, localUserColor],
+    [ydoc, localUserName, localUserColor, pasteHandler],
   );
 
-  // 플로팅 UI(툴바·슬래시 메뉴)를 body 로 분리 — editor-shell 위 오버레이가 선택·복사를 막는 것 방지
-  const portalElements = useMemo(
-    (): { default: null } => ({ default: null }),
-    [],
-  );
-
-  // BlockNote copyToClipboard 가 빈 클립보드로 copy/cut 을 삼키는 문제 보완
-  useBlockNoteCopyFallback(editor);
+  useBlockNoteCopyCutFix(editor, internalClipboard);
 
   return (
     <BlockNoteView
@@ -61,7 +72,6 @@ export function BlockNoteCollabEditor({
       theme="dark"
       editable={editable}
       className="blocknote-collab-editor"
-      portalElements={portalElements}
     />
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type YPartyKitProvider from "y-partykit/provider";
+import { guestColorFromName } from "../lib/randomGuest";
 
 /** awareness 에서 읽어온 한 명의 접속자 정보 */
 export type RoomPeer = {
@@ -24,10 +25,12 @@ function readPeersFromProvider(provider: YPartyKitProvider): RoomPeer[] {
 
   awareness.getStates().forEach((state, clientId) => {
     const user = state.user as AwarenessUser | undefined;
+    const name = user?.name?.trim() || "익명";
+    // awareness 의 color 대신 닉네임 기반 색 — 클라이언트마다 랜덤이었던 문제 제거
     next.push({
       clientId,
-      name: user?.name?.trim() || "익명",
-      color: user?.color || "#9aa3b2",
+      name,
+      color: guestColorFromName(name),
       isSelf: clientId === awareness.clientID,
     });
   });

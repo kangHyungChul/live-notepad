@@ -253,7 +253,7 @@ code {
   border-radius: 12px;
   background: var(--surface);
   min-height: 50vh;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .blocknote-editor__loading {

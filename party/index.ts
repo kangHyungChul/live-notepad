@@ -8,8 +8,7 @@
 import type * as Party from "partykit/server";
 import { onConnect as yPartyKitOnConnect } from "y-partykit";
 import { routeYjsMessage } from "./routeYjsMessage";
-
-const Y_OPTS = { persist: false, gc: true } as const;
+import { buildYPartyKitOptions } from "./yPartyKitOptions";
 
 export default class LiveNotepadParty implements Party.Server {
   /** true → 배포 환경에서 webSocketMessage → onMessage 경로 사용 */
@@ -18,14 +17,14 @@ export default class LiveNotepadParty implements Party.Server {
   constructor(readonly room: Party.Room) {}
 
   async onConnect(conn: Party.Connection) {
-    await yPartyKitOnConnect(conn, this.room, Y_OPTS);
+    await yPartyKitOnConnect(conn, this.room, buildYPartyKitOptions(this.room));
   }
 
   async onMessage(
     message: string | ArrayBuffer | ArrayBufferView,
     conn: Party.Connection,
   ) {
-    await routeYjsMessage(this.room, conn, message, Y_OPTS);
+    await routeYjsMessage(this.room, conn, message, buildYPartyKitOptions(this.room));
   }
 
   onRequest() {
