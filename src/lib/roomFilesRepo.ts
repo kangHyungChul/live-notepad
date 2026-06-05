@@ -416,22 +416,47 @@ export async function getRoomFileSignedUrl(
   return data.signedUrl;
 }
 
+/** 브라우저 저장용 파일명 — 경로 구분자·제어문자 제거 */
+function sanitizeDownloadFileName(originalName: string): string {
+  const base = originalName.trim().split(/[/\\]/).pop() ?? "download";
+  const cleaned = [...base]
+    .map((ch) => {
+      const code = ch.charCodeAt(0);
+      return code < 32 || code === 127 ? "_" : ch;
+    })
+    .join("");
+  return cleaned.length > 0 ? cleaned : "download";
+}
+
 /**
- * 서명 URL 생성 후 브라우저에서 다운로드(또는 새 탭)합니다.
+ * Storage 에서 Blob 으로 받아 로컬에 저장합니다.
+ * 서명 URL + `<a download>` 는 cross-origin 이라 파일명이 storage 키(uuid.ext)로 떨어질 수 있어
+ * same-origin blob URL 로 original_name 을 유지합니다.
  */
 export async function downloadRoomFile(
   supabase: SupabaseClient,
   row: RoomFileRow,
 ): Promise<void> {
-  const signedUrl = await getRoomFileSignedUrl(supabase, row, 120);
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .download(row.storage_path);
+  if (error) throw error;
+  if (!data) throw new Error("파일을 받을 수 없습니다.");
 
-  const a = document.createElement("a");
-  a.href = signedUrl;
-  a.download = row.original_name;
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  const fileName = sanitizeDownloadFileName(row.original_name);
+  const blobUrl = URL.createObjectURL(data);
+
+  try {
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = fileName;
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
 }
 
 /**
