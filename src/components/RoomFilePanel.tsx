@@ -32,7 +32,7 @@ type ActiveUpload = {
   error?: string;
 };
 
-import { RoomFileIconTile } from "./RoomFileIconTile";
+import { RoomFileDetailsRow } from "./RoomFileDetailsRow";
 import { RoomFilePreview } from "./RoomFilePreview";
 
 type Props = {
@@ -42,16 +42,15 @@ type Props = {
   localGuestLabel: string;
 };
 
-/** ISO 날짜를 목록에 표시할 로컬 문자열로 변환 */
+/** ISO 날짜를 yy-mm-dd hh:mm 형식으로 변환 */
 function formatFileDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const yy = String(d.getFullYear()).slice(-2);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${yy}-${mm}-${dd} ${hh}:${min}`;
 }
 
 /**
@@ -371,80 +370,110 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
         <p className="muted small room-files__empty">업로드된 파일이 없습니다.</p>
       ) : (
         <div className="room-files__browser">
-          {pendingUploads.length > 0 && (
-            <ul className="room-files__pending-list" aria-live="polite">
-              {pendingUploads.map((u) => (
-                <li key={`pending-${u.uploadId}`} className="room-files__pending-item">
-                  <span className="room-files__icon-shape room-files__icon-shape--document room-files__icon-shape--pending">
-                    <span className="room-files__icon-fold" />
-                    <span className="room-files__icon-ext">…</span>
-                  </span>
-                  <div className="room-files__pending-meta">
-                    <span className="room-files__pending-name" title={u.fileName}>
-                      {u.fileName}
-                    </span>
-                    <span className="room-files__status-badge room-files__status-badge--uploading">
-                      {u.status === "uploading" && "업로드 중"}
-                      {u.status === "done" && "완료"}
-                      {u.status === "error" && "실패"}
-                    </span>
-                    <span className="muted small">
-                      {!u.isLocal && u.status === "uploading" && `${u.by} · `}
-                      {u.status === "uploading" && `${u.percent}%`}
-                      {u.status === "error" && (u.error ?? "실패")}
-                    </span>
-                    {u.status === "uploading" && (
-                      <div
-                        className="room-files__progress room-files__progress--inline"
-                        role="progressbar"
-                        aria-valuenow={u.percent}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                      >
-                        <div
-                          className="room-files__progress-bar room-files__progress-bar--uploading"
-                          style={{ width: `${u.percent}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  {u.isLocal && u.status === "uploading" && (
-                    <button
-                      type="button"
-                      className="btn small-btn danger room-files__cancel-upload"
-                      title="업로드 중지"
-                      onClick={() => onCancelUpload(u.uploadId, u.fileName)}
-                    >
-                      중지
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {loading && files.length === 0 ? (
+          {loading && files.length === 0 && pendingUploads.length === 0 ? (
             <p className="muted small room-files__empty">파일 목록 불러오는 중…</p>
-          ) : files.length > 0 ? (
-            <div className="room-files__icon-grid" role="list">
-              {files.map((row) => (
-                <RoomFileIconTile
-                  key={row.id}
-                  row={row}
-                  showPreview={canPreviewRoomFile(
-                    row.mime_type,
-                    row.original_name,
-                    row.size_bytes,
-                  )}
-                  deleting={deletingId === row.id}
-                  formatDate={formatFileDate}
-                  onPreview={() => setPreviewRow(row)}
-                  onDownload={() => void onDownload(row)}
-                  onDelete={() => void onDelete(row)}
-                />
-              ))}
+          ) : (
+            <div className="room-files__details-wrap">
+              <table className="room-files__details-table">
+                <colgroup>
+                  <col className="room-files__col-name" />
+                  <col className="room-files__col-period" />
+                  <col className="room-files__col-type" />
+                  <col className="room-files__col-size" />
+                  <col className="room-files__col-actions" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">이름</th>
+                    <th scope="col">파일유효기간</th>
+                    <th scope="col">유형</th>
+                    <th scope="col">크기</th>
+                    <th scope="col" className="room-files__th-actions">
+                      <span className="visually-hidden">작업</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody aria-live="polite">
+                  {pendingUploads.map((u) => (
+                    <tr key={`pending-${u.uploadId}`} className="room-files__details-row room-files__details-row--pending">
+                      <td className="room-files__cell room-files__cell--name">
+                        <span className="room-files__name-cell">
+                          <span
+                            className="room-files__icon-shape room-files__icon-shape--compact room-files__icon-shape--document room-files__icon-shape--pending"
+                            aria-hidden
+                          >
+                            <span className="room-files__icon-fold" />
+                            <span className="room-files__icon-ext">…</span>
+                          </span>
+                          <span className="room-files__details-name" title={u.fileName}>
+                            {u.fileName}
+                          </span>
+                        </span>
+                        {u.status === "uploading" && (
+                          <div
+                            className="room-files__progress room-files__progress--inline room-files__progress--table"
+                            role="progressbar"
+                            aria-valuenow={u.percent}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                          >
+                            <div
+                              className="room-files__progress-bar room-files__progress-bar--uploading"
+                              style={{ width: `${u.percent}%` }}
+                            />
+                          </div>
+                        )}
+                      </td>
+                      <td className="room-files__cell room-files__cell--period muted">—</td>
+                      <td className="room-files__cell room-files__cell--type">
+                        <span className="room-files__status-badge room-files__status-badge--uploading">
+                          {u.status === "uploading" && "업로드 중"}
+                          {u.status === "done" && "완료"}
+                          {u.status === "error" && "실패"}
+                        </span>
+                        {!u.isLocal && u.status === "uploading" && (
+                          <span className="room-files__pending-by muted"> · {u.by}</span>
+                        )}
+                      </td>
+                      <td className="room-files__cell room-files__cell--size muted">
+                        {u.status === "uploading" && `${u.percent}%`}
+                        {u.status === "error" && (u.error ?? "실패")}
+                      </td>
+                      <td className="room-files__cell room-files__cell--actions">
+                        {u.isLocal && u.status === "uploading" ? (
+                          <button
+                            type="button"
+                            className="btn small-btn danger"
+                            title="업로드 중지"
+                            onClick={() => onCancelUpload(u.uploadId, u.fileName)}
+                          >
+                            중지
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {files.map((row) => (
+                    <RoomFileDetailsRow
+                      key={row.id}
+                      row={row}
+                      showPreview={canPreviewRoomFile(
+                        row.mime_type,
+                        row.original_name,
+                        row.size_bytes,
+                      )}
+                      deleting={deletingId === row.id}
+                      formatDate={formatFileDate}
+                      onPreview={() => setPreviewRow(row)}
+                      onDownload={() => void onDownload(row)}
+                      onDelete={() => void onDelete(row)}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : null}
+          )}
         </div>
       )}
 

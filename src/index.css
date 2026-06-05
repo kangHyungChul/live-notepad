@@ -431,108 +431,190 @@ code {
   margin-top: 1rem;
 }
 
-.room-files__pending-list {
-  list-style: none;
-  margin: 0 0 0.75rem;
-  padding: 0 0 0.75rem;
-  border-bottom: 1px dashed var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+/* 파일 종류별 아이콘 (CSS 도형) — 자세히 목록에서 --compact 와 함께 사용 */
+.room-files__details-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #12151c;
+  overflow-x: auto;
 }
 
-.room-files__pending-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-}
-
-.room-files__cancel-upload {
-  flex-shrink: 0;
-  align-self: center;
-}
-
-.room-files__pending-meta {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.room-files__pending-name {
+.room-files__details-table {
+  width: 100%;
+  min-width: 42rem;
+  border-collapse: collapse;
   font-size: 0.875rem;
-  font-weight: 500;
+  table-layout: fixed;
+}
+
+.room-files__details-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.45rem 0.65rem;
+  text-align: center;
+  font-weight: 600;
+  font-size: inherit;
+  color: #9aa3b2;
+  background: #161a22;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.room-files__details-table tbody td {
+  padding: 0.4rem 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.room-files__details-row {
+  cursor: default;
+  transition: background 0.12s ease;
+}
+
+.room-files__details-row:hover {
+  background: rgba(108, 158, 248, 0.08);
+}
+
+.room-files__details-row--pending:hover {
+  background: rgba(108, 158, 248, 0.05);
+}
+
+.room-files__col-name {
+  width: 38%;
+}
+
+.room-files__col-period {
+  width: 30%;
+}
+
+.room-files__col-type {
+  width: 12%;
+}
+
+.room-files__col-size {
+  width: 9%;
+}
+
+.room-files__col-actions {
+  width: 7rem;
+}
+
+.room-files__cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Windows 스타일 아이콘 그리드 */
-.room-files__icon-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
-  gap: 0.35rem 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #12151c;
-  min-height: 5rem;
+.room-files__cell--size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-.room-files__tile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0.5rem 0.35rem 0.4rem;
-  border-radius: 8px;
-  cursor: default;
-  user-select: none;
+.room-files__cell--type {
   text-align: center;
-  position: relative;
 }
 
-.room-files__tile:hover,
-.room-files__tile:focus-within {
-  background: rgba(108, 158, 248, 0.1);
-  outline: 1px solid rgba(108, 158, 248, 0.25);
+.room-files__cell--actions {
+  text-align: right;
+  padding-inline: 0.25rem 0.65rem;
 }
 
-.room-files__tile-name {
-  margin: 0.35rem 0 0.1rem;
-  font-size: 0.75rem;
-  line-height: 1.25;
-  width: 100%;
-  max-height: 2.5em;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  word-break: break-all;
+.room-files__cell--period {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.room-files__tile-meta {
-  margin: 0;
-  font-size: 0.65rem;
+.room-files__period-sep {
+  color: #6b7280;
 }
 
-.room-files__tile-actions {
-  display: none;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.2rem;
-  margin-top: 0.35rem;
+.room-files__pending-by {
+  font-size: inherit;
 }
 
-.room-files__tile:hover .room-files__tile-actions,
-.room-files__tile:focus-within .room-files__tile-actions {
+.room-files__cell--name {
+  white-space: normal;
+}
+
+.room-files__name-cell {
   display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
-.room-files__tile-actions .small-btn {
-  padding: 0.2rem 0.4rem;
-  font-size: 0.7rem;
-  min-width: 1.6rem;
+.room-files__details-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.room-files__name-link {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.room-files__name-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.room-files__row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 0.15rem;
+}
+
+.room-files__row-actions .small-btn {
+  padding: 0.12rem 0.28rem;
+  font-size: inherit;
+  min-width: 1.35rem;
+}
+
+.room-files__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.3rem;
+}
+
+.room-files__action-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  display: block;
+}
+
+.room-files__th-actions {
+  width: 7rem;
+  text-align: right;
+  padding-inline: 0.25rem 0.65rem;
+}
+
+.room-files__progress--table {
+  margin-top: 0.3rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* 파일 종류별 아이콘 (CSS 도형) */
@@ -627,9 +709,29 @@ code {
   background: linear-gradient(160deg, #90a4ae 0%, #546e7a 100%);
 }
 
+/* 목록용 소형 파일 아이콘 — base 스타일 뒤에 두어 크기가 덮이지 않게 함 */
+.room-files__icon-shape.room-files__icon-shape--compact {
+  width: 1.0625rem;
+  height: 1.25rem;
+  border-radius: 1px 2px 1px 1px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+
+.room-files__icon-shape.room-files__icon-shape--compact .room-files__icon-fold {
+  width: 0.38rem;
+  height: 0.38rem;
+}
+
+.room-files__icon-shape.room-files__icon-shape--compact .room-files__icon-ext {
+  font-size: 0.46875rem;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
 .room-files__status-badge {
   display: inline-block;
-  font-size: 0.75rem;
+  font-size: inherit;
   font-weight: 600;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;

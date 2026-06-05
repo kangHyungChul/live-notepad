@@ -244,6 +244,20 @@ export function getFileIconLabel(originalName: string): string {
   return ext.slice(0, 4).toUpperCase();
 }
 
+/** Windows 탐색기 「자세히」 유형 열용 라벨 (예: PDF) */
+export function getFileTypeLabel(mimeType: string, originalName: string): string {
+  const ext = fileExtension(originalName);
+  if (ext) return ext.toUpperCase();
+
+  const mime = mimeType.toLowerCase();
+  if (mime.startsWith("image/")) return "이미지";
+  if (mime.startsWith("video/")) return "동영상";
+  if (mime.startsWith("audio/")) return "오디오";
+  if (mime.startsWith("text/")) return "텍스트";
+  if (mime === "application/pdf") return "PDF";
+  return "—";
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
