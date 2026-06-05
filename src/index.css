@@ -360,6 +360,10 @@ code {
   font-weight: 600;
 }
 
+.room-files__dropzone-desc {
+  margin: 0;
+}
+
 .room-files__input {
   position: absolute;
   width: 0;
@@ -753,7 +757,7 @@ code {
 }
 
 .room-files__quota {
-  margin: 0.5rem 0 0.35rem;
+  margin: 0.5rem 0;
 }
 
 .room-files__quota-bar {

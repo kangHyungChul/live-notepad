@@ -352,7 +352,7 @@ export function RoomFilePanel({ roomSlug, supabase, localGuestLabel }: Props) {
         aria-label="파일을 드래그하거나 클릭하여 업로드"
       >
         <p className="room-files__dropzone-title">파일을 여기에 놓거나 클릭하세요</p>
-        <p className="muted small">여러 파일 동시 업로드 가능</p>
+        <p className="room-files__dropzone-desc muted small">여러 파일 동시 업로드 가능</p>
         <input
           ref={inputRef}
           type="file"
